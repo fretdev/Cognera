@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #131314;
+  --surface: #1e1f20;
+  --border: #444746;
+  --ink: #e3e3e3;
+  --muted: #c4c7c5;
+
+  /* Solid accent fallback (used for focus rings, small UI bits) */
+  --accent: #4285f4;
+  --accent-hover: #5a95f5;
+  --accent-soft: #1e1f20;
+
+  --gradient: linear-gradient(90deg, #4285f4 0%, #9b72cb 55%, #d96570 100%);
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+}
+
+* {
+  border-color: var(--border);
+}
+
+::selection {
+  background-color: #4285f4;
+  color: #fff;
+}
+
+/* Thin, dark-mode-friendly scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #3a3b3c;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+.gradient-bg {
+  background-image: var(--gradient);
+}
+
+.gradient-text {
+  background-image: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.gradient-border-glow:focus-within,
+.gradient-border-glow:focus {
+  box-shadow:
+    0 0 0 1px #4285f4,
+    0 0 16px 2px rgba(155, 114, 203, 0.35);
+}
+
+@keyframes pulse-gradient {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.thinking-dot {
+  animation: pulse-gradient 1.1s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
