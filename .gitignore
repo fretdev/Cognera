@@ -17,3 +17,6 @@ frontend/out/
 # Misc
 .DS_Store
 *.log
+
+#personal readme
+NOTES.MD
