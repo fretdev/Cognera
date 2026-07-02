@@ -120,7 +120,7 @@ export default function LoginPage() {
               type="submit"
               disabled={loading}
               aria-label={mode === "login" ? "Log in" : "Sign up"}
-              className="gradient-bg mt-2 w-full rounded-full py-3 text-sm font-medium text-white transition-opacity duration-150 hover:opacity-90 disabled:opacity-50"
+              className="btn-primary mt-2 w-full justify-center"
             >
               {loading ? "Please wait…" : mode === "login" ? "Log in" : "Sign up"}
             </button>

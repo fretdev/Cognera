@@ -18,5 +18,6 @@ frontend/out/
 .DS_Store
 *.log
 
-#personal readme
-NOTES.MD
+# Project notes (gitignored per project convention — NOTES.md holds dev
+# setup instructions; README.md is the public-facing project overview)
+NOTES.md

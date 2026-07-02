@@ -2,9 +2,6 @@ import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL!;
 
-// Client-component-only helper: pulls the current session's access token and
-// attaches it as a Bearer token so the FastAPI backend can verify who's
-// calling. Routes that don't need auth simply ignore the header.
 async function authHeaders(): Promise<Record<string, string>> {
   const supabase = createClient();
   const { data } = await supabase.auth.getSession();
@@ -35,12 +32,20 @@ export async function apiPost<T>(
   return res.json();
 }
 
+export async function apiDelete<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 export async function apiUpload<T>(path: string, file: File): Promise<T> {
   const formData = new FormData();
   formData.append("file", file);
-
-  // Don't set Content-Type manually here — the browser needs to set its
-  // own multipart boundary, which it can only do if you let it.
+  // Don't set Content-Type manually — the browser must set its own
+  // multipart boundary, which it can only do if we leave the header unset.
   const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: await authHeaders(),

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.auth import CurrentUser, get_current_user
-from app.db.supabase_client import get_supabase
+from app.db.supabase_client import get_supabase, call_supabase
 from app.services.gemini_client import generate_json
 from app.services.retrieval import get_combined_context
 
@@ -70,7 +70,7 @@ should be concise (1-3 sentences)."""
             status_code=502, detail="The model returned an unexpected format. Try again."
         )
 
-    supabase = get_supabase()
+    
     rows = []
     flashcards = []
     primary_document_id = req.document_ids[0]
@@ -91,14 +91,14 @@ should be concise (1-3 sentences)."""
         flashcards.append(Flashcard(id=fc_id, question=item["question"], answer=item["answer"]))
 
     if rows:
-        supabase.table("flashcards").insert(rows).execute()
+        call_supabase(lambda: get_supabase().table("flashcards").insert(rows).execute())
 
     return flashcards
 
 
 @router.get("/flashcards", response_model=list[Flashcard])
 def list_flashcards(user: CurrentUser = Depends(get_current_user)):
-    supabase = get_supabase()
+    
     result = (
         supabase.table("flashcards")
         .select("id, question, answer")
@@ -160,7 +160,7 @@ distractors plausible, not obviously wrong."""
             status_code=502, detail="The model returned an unexpected format. Try again."
         )
 
-    supabase = get_supabase()
+    
     rows = []
     questions = []
     primary_document_id = req.document_ids[0]
@@ -195,14 +195,14 @@ distractors plausible, not obviously wrong."""
         )
 
     if rows:
-        supabase.table("quiz_questions").insert(rows).execute()
+        call_supabase(lambda: get_supabase().table("quiz_questions").insert(rows).execute())
 
     return questions
 
 
 @router.get("/quiz", response_model=list[QuizQuestion])
 def list_quiz_questions(user: CurrentUser = Depends(get_current_user)):
-    supabase = get_supabase()
+    
     result = (
         supabase.table("quiz_questions")
         .select("id, question, options, correct_option")

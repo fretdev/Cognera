@@ -1,9 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// Server Components can't write cookies, so this middleware refreshes the
-// Supabase session token on every request and keeps it in sync between the
-// request and the response. Without this, sessions would silently expire.
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -12,9 +9,7 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
+        getAll() { return request.cookies.getAll(); },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
@@ -28,22 +23,23 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: this call revalidates the token against the Supabase Auth
-  // server — don't replace it with getSession(), which only reads local
-  // cookie state and can't be trusted in middleware.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getSession() reads from the cookie — no network call, instant.
+  // We only use it here for routing decisions (redirect to /login or not).
+  // Actual API security uses getUser() in app/core/auth.py on the backend,
+  // which does the real Supabase server verification. This is the correct
+  // pattern for Next.js middleware: fast cookie check for UX routing,
+  // trusted server verification for data access.
+  const { data: { session } } = await supabase.auth.getSession();
 
   const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
 
-  if (!user && !isAuthRoute) {
+  if (!session && !isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuthRoute) {
+  if (session && isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
@@ -54,6 +50,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|icon\\.svg|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

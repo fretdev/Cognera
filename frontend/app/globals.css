@@ -31,7 +31,61 @@ body {
   color: #fff;
 }
 
-/* Thin, dark-mode-friendly scrollbar */
+/* ── Buttons ──────────────────────────────────────────────────────────────
+   Primary: flat dark surface, white text. No gradients, no glow.
+   Secondary: transparent with a subtle border.
+   Both ChatGPT and Gemini use this restrained pattern for their CTAs.
+   The gradient is reserved ONLY for the logo mark and tiny decorative
+   accents — not interactive controls. */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #2a2b2c;
+  color: #e3e3e3;
+  border: 1px solid #444746;
+  border-radius: 9999px;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: #3a3b3c;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Icon-only round button — send, stop, nav */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #2a2b2c;
+  color: #e3e3e3;
+  border: 1px solid #444746;
+  border-radius: 9999px;
+  width: 2.25rem;
+  height: 2.25rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background-color: #3a3b3c;
+}
+
+.btn-icon:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

@@ -7,13 +7,12 @@ import FlashcardViewer from "./FlashcardViewer";
 import QuizViewer from "./QuizViewer";
 
 type Flashcard = { id: string; question: string; answer: string };
-type QuizQuestion = {
-  id: string;
-  question: string;
-  options: string[];
-  correct_option: number;
-};
+type QuizQuestion = { id: string; question: string; options: string[]; correct_option: number };
 type Tab = "flashcards" | "quiz";
+
+function getInitialState() {
+  return { flashcards: null as Flashcard[] | null, quiz: null as QuizQuestion[] | null };
+}
 
 export default function StudyToolsPanel() {
   const [tab, setTab] = useState<Tab>("flashcards");
@@ -21,60 +20,63 @@ export default function StudyToolsPanel() {
   const [count, setCount] = useState(10);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [{ flashcards, quiz }, setResults] = useState(getInitialState());
 
-  const [flashcards, setFlashcards] = useState<Flashcard[] | null>(null);
-  const [quiz, setQuiz] = useState<QuizQuestion[] | null>(null);
+  function resetResults() {
+    setResults(getInitialState());
+    setError("");
+  }
+
+  function switchTab(next: Tab) {
+    setTab(next);
+    resetResults();
+  }
 
   async function handleGenerate() {
     if (selectedDocs.length === 0) {
       setError("Select at least one document first");
       return;
     }
-    setError("");
+    // Always clear previous results + error before a new request,
+    // so stale data never misleads the user and loading state is clean.
+    resetResults();
     setLoading(true);
-    setFlashcards(null);
-    setQuiz(null);
 
     try {
       if (tab === "flashcards") {
         const cards = await apiPost<Flashcard[]>("/study-tools/flashcards", {
           document_ids: selectedDocs,
-          count,
+          count: Math.max(1, Math.min(count, 25)),
         });
-        setFlashcards(cards);
+        setResults({ flashcards: cards, quiz: null });
       } else {
         const questions = await apiPost<QuizQuestion[]>("/study-tools/quiz", {
           document_ids: selectedDocs,
-          count,
+          count: Math.max(1, Math.min(count, 25)),
         });
-        setQuiz(questions);
+        setResults({ flashcards: null, quiz: questions });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Generation failed — please try again"
+      );
     } finally {
+      // Always flip loading off, even on error, so the button is usable again.
       setLoading(false);
     }
-  }
-
-  function switchTab(next: Tab) {
-    setTab(next);
-    setFlashcards(null);
-    setQuiz(null);
-    setError("");
   }
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-10">
       <h1 className="text-2xl font-medium text-ink">Flashcards & Quizzes</h1>
       <p className="mt-2 text-sm text-muted">
-        Generated from whatever you've uploaded — pick the documents and how
-        many items you want.
+        Auto-generated from your uploaded materials — pick documents, set a
+        count, and generate.
       </p>
 
-      <div
-        role="tablist"
-        className="mt-6 inline-flex rounded-full border border-border bg-surface p-1"
-      >
+      <div role="tablist" className="mt-6 inline-flex rounded-full border border-border bg-surface p-1">
         {(["flashcards", "quiz"] as Tab[]).map((t) => (
           <button
             key={t}
@@ -98,14 +100,12 @@ export default function StudyToolsPanel() {
           onCountChange={setCount}
           countLabel={tab === "flashcards" ? "NUMBER OF FLASHCARDS" : "NUMBER OF QUESTIONS"}
         />
-
         {error && <p className="mt-3 text-sm text-[#f28b82]">{error}</p>}
-
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={loading}
-          className="gradient-bg mt-5 w-full rounded-full py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+          disabled={loading || selectedDocs.length === 0}
+          className="btn-primary mt-5 w-full"
         >
           {loading
             ? "Generating…"
@@ -117,13 +117,22 @@ export default function StudyToolsPanel() {
 
       {flashcards && flashcards.length > 0 && (
         <div className="mt-8">
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm font-medium text-ink">{flashcards.length} cards generated</p>
+            <button type="button" onClick={handleGenerate} className="btn-primary text-xs">
+              Regenerate
+            </button>
+          </div>
           <FlashcardViewer cards={flashcards} />
         </div>
       )}
 
       {quiz && quiz.length > 0 && (
         <div className="mt-8">
-          <QuizViewer questions={quiz} />
+          <div className="mb-4 flex items-center justify-between">
+            <p className="text-sm font-medium text-ink">{quiz.length} questions generated</p>
+          </div>
+          <QuizViewer questions={quiz} onRetry={handleGenerate} />
         </div>
       )}
     </div>

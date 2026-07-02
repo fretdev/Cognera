@@ -1,15 +1,12 @@
 """
-Auth dependency for protected routes.
-
-The frontend attaches the user's Supabase access token as a Bearer token
-on every request (see frontend/lib/api.ts). This dependency verifies that
-token against Supabase's Auth server and returns the authenticated user.
-Use it on any route that should only work for a logged-in user.
+Auth dependency for protected routes — verifies the Supabase access token
+from the Authorization header with connection-error resilience.
 """
 from dataclasses import dataclass
+import httpx
+import time
 
 from fastapi import Header, HTTPException
-
 from app.db.supabase_client import get_supabase
 
 
@@ -27,10 +24,18 @@ def get_current_user(authorization: str = Header(default="")) -> CurrentUser:
 
     token = authorization.removeprefix("Bearer ").strip()
 
-    try:
-        result = get_supabase().auth.get_user(token)
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Token verification failed: {e}")
+    last_exc = None
+    for attempt in range(2):
+        try:
+            result = get_supabase().auth.get_user(token)
+            break
+        except (httpx.ReadError, httpx.ConnectError, httpx.RemoteProtocolError) as e:
+            last_exc = e
+            if attempt == 0:
+                time.sleep(0.5)
+            continue
+    else:
+        raise HTTPException(status_code=503, detail=f"Auth service temporarily unavailable: {last_exc}")
 
     if not result or not result.user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
