@@ -170,7 +170,6 @@ export default function ChatPanel({
             question.length > 60 ? question.slice(0, 57) + "…" : question;
           const convo = await createConversation(title);
           conversationIdRef.current = convo.id;
-          // Navigate to the conversation URL without a full page reload.
           router.replace(`/c/${convo.id}`);
         }
 
@@ -329,19 +328,19 @@ export default function ChatPanel({
                     >
                       <Pencil size={14} strokeWidth={1.75} />
                     </button>
-                    <div className="rounded-3xl bg-surface px-4 py-2.5 text-sm text-ink">
+                    <div className={`rounded-3xl bg-surface px-4 py-2.5 text-sm text-ink ${i === messages.length - 1 ? "message-reveal" : ""}`}>
                       {m.content}
                     </div>
                   </div>
                 ) : (
-                  <div className="max-w-[90%]">
+                  <div className={`max-w-[90%] ${i === messages.length - 1 ? "message-reveal" : ""}`}>
                     {m.isError ? (
                       <div className="flex items-center gap-2 text-sm text-[#f28b82]">
                         <AlertCircle size={15} strokeWidth={1.75} />
                         {m.content}
                       </div>
                     ) : (
-                      <div className="prose prose-invert prose-sm max-w-none text-sm leading-relaxed prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-pre:p-0 prose-pre:bg-transparent prose-pre:m-0">
+                      <div className="chat-prose">
                         <ReactMarkdown components={markdownComponents}>
                           {m.content}
                         </ReactMarkdown>

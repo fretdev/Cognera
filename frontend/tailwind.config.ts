@@ -19,13 +19,8 @@ const config: Config = {
         "accent-soft": "var(--accent-soft)",
       },
       fontFamily: {
-        sans: [
-          '"Google Sans"',
-          "Inter",
-          "ui-sans-serif",
-          "system-ui",
-          "sans-serif",
-        ],
+        sans: ["var(--font-jakarta)", "Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["IBM Plex Mono", "Fira Code", "ui-monospace", "monospace"],
       },
       fontSize: {
         // fluid type scale

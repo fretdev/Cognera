@@ -1,6 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// Routes that never require a session.
+const PUBLIC_PATHS = new Set(["/", "/login"]);
+
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
@@ -11,9 +14,7 @@ export async function middleware(request: NextRequest) {
       cookies: {
         getAll() { return request.cookies.getAll(); },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -23,25 +24,23 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // getSession() reads from the cookie — no network call, instant.
-  // We only use it here for routing decisions (redirect to /login or not).
-  // Actual API security uses getUser() in app/core/auth.py on the backend,
-  // which does the real Supabase server verification. This is the correct
-  // pattern for Next.js middleware: fast cookie check for UX routing,
-  // trusted server verification for data access.
+  // Cookie-only check — no network call, instant.
   const { data: { session } } = await supabase.auth.getSession();
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
+  const { pathname } = request.nextUrl;
+  const isPublic = PUBLIC_PATHS.has(pathname);
 
-  if (!session && !isAuthRoute) {
+  // Logged-in user visiting landing or login → send them to the app.
+  if (session && (pathname === "/" || pathname === "/login")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/chat";
     return NextResponse.redirect(url);
   }
 
-  if (session && isAuthRoute) {
+  // Unauthenticated user visiting a protected route → send to login.
+  if (!session && !isPublic) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 

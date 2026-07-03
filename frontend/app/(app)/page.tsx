@@ -1,2 +1,2 @@
-import ChatPanel from "@/components/ChatPanel";
-export default function Home() { return <ChatPanel />; }
+import { redirect } from "next/navigation";
+export default function AppRoot() { redirect("/chat"); }

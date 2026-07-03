@@ -87,7 +87,7 @@ function SidebarContent({
       {/* New chat */}
       <div className="px-3 pb-1">
         <Link
-          href="/"
+          href="/chat"
           onClick={onNavigate}
           className="group flex items-center gap-3 rounded-full px-3 py-2.5 text-sm text-muted transition-colors hover:bg-surface hover:text-ink"
           title={collapsed ? "New chat" : undefined}
