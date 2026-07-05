@@ -1,7 +1,6 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class",
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,31 +8,31 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "var(--bg)",
-        surface: "var(--surface)",
-        border: "var(--border)",
-        ink: "var(--ink)",
-        muted: "var(--muted)",
-        accent: "var(--accent)",
-        "accent-hover": "var(--accent-hover)",
-        "accent-soft": "var(--accent-soft)",
+        bg:      "var(--bg)",
+        s1:      "var(--surface-1)",
+        s2:      "var(--surface-2)",
+        s3:      "var(--surface-3)",
+        b1:      "var(--border-1)",
+        b2:      "var(--border-2)",
+        b3:      "var(--border-3)",
+        t1:      "var(--text-1)",
+        t2:      "var(--text-2)",
+        t3:      "var(--text-3)",
+        accent:  "var(--accent)",
+        // Legacy compat aliases
+        surface: "var(--surface-2)",
+        border:  "var(--border-2)",
+        ink:     "var(--text-1)",
+        muted:   "var(--text-2)",
       },
       fontFamily: {
-        sans: ["var(--font-jakarta)", "Plus Jakarta Sans", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["IBM Plex Mono", "Fira Code", "ui-monospace", "monospace"],
-      },
-      fontSize: {
-        // fluid type scale
-        xs: ["clamp(0.72rem, 0.7rem + 0.1vw, 0.78rem)", { lineHeight: "1.4" }],
-        sm: ["clamp(0.825rem, 0.8rem + 0.15vw, 0.9rem)", { lineHeight: "1.5" }],
-        base: ["clamp(0.925rem, 0.9rem + 0.2vw, 1rem)", { lineHeight: "1.6" }],
-        lg: ["clamp(1.05rem, 1rem + 0.3vw, 1.2rem)", { lineHeight: "1.5" }],
-        xl: ["clamp(1.2rem, 1.1rem + 0.5vw, 1.5rem)", { lineHeight: "1.4" }],
-        "2xl": ["clamp(1.5rem, 1.3rem + 1vw, 2rem)", { lineHeight: "1.25" }],
+        display: ["var(--font-display)", "sans-serif"],
+        sans:    ["var(--font-sans)", "sans-serif"],
+        mono:    ["JetBrains Mono", "Fira Code", "monospace"],
       },
     },
   },
-  plugins: [require("@tailwindcss/typography")],
+  plugins: [],
 };
 
 export default config;
