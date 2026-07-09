@@ -48,18 +48,46 @@ def _call_with_retry(fn, retries: int = 4, base_delay: float = 2.0):
 
 
 def generate_text(prompt: str, model: str | None = None) -> str:
-    """One-shot text generation. Use this for chat replies, quiz/flashcard
-    generation, and summarization — pass a fully-formed prompt in."""
+    """One-shot text generation with retry."""
     client = get_gemini_client()
-
     def _call():
-        return client.models.generate_content(
-            model=model or settings.gemini_chat_model,
-            contents=prompt,
-        )
+        return client.models.generate_content(model=model or settings.gemini_chat_model, contents=prompt)
+    return _call_with_retry(_call).text
 
-    response = _call_with_retry(_call)
-    return response.text
+
+def generate_text_stream(prompt: str, model: str | None = None):
+    """Stream text generation — yields text chunks as they arrive from Gemini.
+    Used by the /chat/stream endpoint to give users the real-time response feel."""
+    client = get_gemini_client()
+    for chunk in client.models.generate_content_stream(
+        model=model or settings.gemini_chat_model,
+        contents=prompt,
+    ):
+        if chunk.text:
+            yield chunk.text
+
+
+def stream_text(prompt: str, model: str | None = None):
+    """Generator that yields text chunks as Gemini produces them.
+    Used by the /chat/ask/stream SSE endpoint to give students
+    the live "thinking" experience rather than waiting for the full answer."""
+    client = get_gemini_client()
+    last_error = None
+    for attempt in range(3):
+        try:
+            for chunk in client.models.generate_content_stream(
+                model=model or settings.gemini_chat_model,
+                contents=prompt,
+            ):
+                if chunk.text:
+                    yield chunk.text
+            return
+        except ServerError as e:
+            last_error = e
+            if attempt < 2:
+                time.sleep(2 * (attempt + 1))
+                continue
+    raise last_error
 
 
 def generate_json(prompt: str, model: str | None = None) -> str:
