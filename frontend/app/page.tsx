@@ -129,12 +129,12 @@ function FCard({ icon: Icon, title, body }: { icon: React.ElementType; title: st
 function CmpRow({ label, cognera, generic }: { label: string; cognera: boolean; generic: boolean }) {
   return (
     <tr style={{ borderTop: "1px solid var(--b1)" }}>
-      <td className="py-3 text-sm" style={{ color: "var(--t2)", paddingRight: "24px" }}>{label}</td>
-      <td className="py-3 text-center">
-        {cognera ? <span className="text-sm font-medium" style={{ color: "var(--accent)" }}>✓</span> : <span style={{ color: "var(--t3)" }}>—</span>}
+      <td style={{ color: "var(--t2)", fontSize: "13.5px", padding: "13px 20px" }}>{label}</td>
+      <td style={{ textAlign: "center", padding: "13px 20px" }}>
+        {cognera ? <span style={{ color: "var(--accent)", fontWeight: 600 }}>✓</span> : <span style={{ color: "var(--t3)" }}>—</span>}
       </td>
-      <td className="py-3 text-center">
-        {generic ? <span className="text-sm" style={{ color: "var(--t3)" }}>✓</span> : <span style={{ color: "var(--t3)" }}>—</span>}
+      <td style={{ textAlign: "center", padding: "13px 20px" }}>
+        {generic ? <span style={{ color: "var(--t3)" }}>✓</span> : <span style={{ color: "var(--t3)" }}>—</span>}
       </td>
     </tr>
   );
@@ -333,9 +333,9 @@ export default function LandingPage() {
             <table className="w-full">
               <thead>
                 <tr style={{ background: "var(--s2)" }}>
-                  <th className="py-3 px-4 text-left text-xs font-medium" style={{ color: "var(--t3)", width: "50%" }}></th>
-                  <th className="py-3 px-4 text-center text-xs font-semibold" style={{ color: "var(--accent)", fontFamily: "var(--font-display)" }}>Cognera</th>
-                  <th className="py-3 px-4 text-center text-xs" style={{ color: "var(--t3)" }}>Generic AI</th>
+                  <th style={{ padding: "12px 20px", textAlign: "left", fontSize: "11px", fontWeight: 500, color: "var(--t3)", width: "55%" }}></th>
+                  <th style={{ padding: "12px 20px", textAlign: "center", fontSize: "12px", fontWeight: 700, color: "var(--accent)", fontFamily: "var(--font-display)" }}>Cognera</th>
+                  <th style={{ padding: "12px 20px", textAlign: "center", fontSize: "12px", color: "var(--t3)" }}>Generic AI</th>
                 </tr>
               </thead>
               <tbody className="px-4">

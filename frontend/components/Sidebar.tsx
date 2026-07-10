@@ -186,7 +186,9 @@ export default function Sidebar({ email }: { email?: string | null }) {
       <aside className={`hidden md:flex flex-col h-screen flex-shrink-0 transition-all duration-200 ${collapsed ? "w-[58px]" : "w-58"}`}
         style={{ ...sidebarBase, width: collapsed ? "58px" : "228px" }}>
         <div className="flex items-center justify-between px-4 py-5">
-          {collapsed ? <CogneraMark size={22} /> : <CogneraWordmark size={22} />}
+          <Link href="/chat" aria-label="Go to chat">
+            {collapsed ? <CogneraMark size={22} /> : <CogneraWordmark size={22} />}
+          </Link>
           <button onClick={() => setCollapsed(c => !c)}
             className="rounded-lg p-1.5 transition-colors"
             style={{ color: "var(--t3)" }}
@@ -202,7 +204,7 @@ export default function Sidebar({ email }: { email?: string | null }) {
       {/* Mobile top bar */}
       <div className="md:hidden flex items-center justify-between px-4 py-3"
         style={{ ...sidebarBase, borderRight: "none", borderBottom: "1px solid var(--b1)" }}>
-        <CogneraWordmark size={20} />
+        <Link href="/chat" aria-label="Go to chat"><CogneraWordmark size={20} /></Link>
         <button onClick={() => setMobileOpen(true)} style={{ color: "var(--t2)" }} aria-label="Open menu">
           <Menu size={18} strokeWidth={1.75} />
         </button>
@@ -214,7 +216,9 @@ export default function Sidebar({ email }: { email?: string | null }) {
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
           <aside className="absolute left-0 top-0 flex flex-col h-full w-64" style={sidebarBase}>
             <div className="flex items-center justify-between px-4 py-5">
-              <CogneraWordmark size={22} />
+              <Link href="/chat" onClick={() => setMobileOpen(false)} aria-label="Go to chat">
+                <CogneraWordmark size={22} />
+              </Link>
               <button onClick={() => setMobileOpen(false)} style={{ color: "var(--t3)" }} aria-label="Close">
                 <X size={18} strokeWidth={1.75} />
               </button>

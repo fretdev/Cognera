@@ -55,13 +55,44 @@ def generate_text(prompt: str, model: str | None = None) -> str:
     return _call_with_retry(_call).text
 
 
+def generate_text_with_search(prompt: str, model: str | None = None) -> str:
+    """One-shot generation with Google Search grounding enabled.
+    Used for general-mode queries (no document context) so Cognera can
+    answer current-events and real-world questions rather than refusing."""
+    client = get_gemini_client()
+    def _call():
+        return client.models.generate_content(
+            model=model or settings.gemini_chat_model,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+            ),
+        )
+    return _call_with_retry(_call).text
+
+
 def generate_text_stream(prompt: str, model: str | None = None):
-    """Stream text generation — yields text chunks as they arrive from Gemini.
-    Used by the /chat/stream endpoint to give users the real-time response feel."""
+    """Stream text generation without web search (used for grounded/document mode)."""
     client = get_gemini_client()
     for chunk in client.models.generate_content_stream(
         model=model or settings.gemini_chat_model,
         contents=prompt,
+    ):
+        if chunk.text:
+            yield chunk.text
+
+
+def generate_text_stream_with_search(prompt: str, model: str | None = None):
+    """Stream generation with Google Search grounding (used for general mode).
+    Note: Gemini streaming with tools may buffer more than plain streaming —
+    chunks still arrive progressively but may be slightly larger batches."""
+    client = get_gemini_client()
+    for chunk in client.models.generate_content_stream(
+        model=model or settings.gemini_chat_model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            tools=[types.Tool(google_search=types.GoogleSearch())],
+        ),
     ):
         if chunk.text:
             yield chunk.text

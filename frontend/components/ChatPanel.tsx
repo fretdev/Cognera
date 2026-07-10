@@ -57,6 +57,41 @@ export default function ChatPanel({
   const abortRef = useRef<AbortController | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Typewriter queue — incoming chunks are pushed here; a fixed-rate
+  // interval drains them character by character so the reveal is smooth
+  // regardless of how large or irregular Gemini's chunks are.
+  const typeQueueRef = useRef<string[]>([]);
+  const typeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Tracks displayed text separately so the interval can read it without
+  // triggering re-renders on every character.
+  const displayedRef = useRef<string>("");
+
+  function startTypewriter() {
+    if (typeIntervalRef.current) return;
+    typeIntervalRef.current = setInterval(() => {
+      if (typeQueueRef.current.length === 0) return;
+      // Drain a small batch per tick — 3 chars at ~60fps ≈ ~180 chars/s,
+      // which feels natural and close to reading speed.
+      const batch = typeQueueRef.current.splice(0, 3).join("");
+      displayedRef.current += batch;
+      const snapshot = displayedRef.current;
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (!last || last.role !== "assistant") return prev;
+        return [...prev.slice(0, -1), { ...last, content: snapshot }];
+      });
+    }, 16); // ~60fps
+  }
+
+  function stopTypewriter() {
+    if (typeIntervalRef.current) {
+      clearInterval(typeIntervalRef.current);
+      typeIntervalRef.current = null;
+    }
+    typeQueueRef.current = [];
+    displayedRef.current = "";
+  }
+
   useEffect(() => {
     createClient().auth.getUser().then(({ data }) => { userIdRef.current = data.user?.id || null; });
   }, []);
@@ -76,6 +111,7 @@ export default function ChatPanel({
     setLoading(false);
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
     abortRef.current = null;
+    stopTypewriter();
   }
 
   async function persistMessages(question: string, answer: string, sources: Source[], mode: Mode) {
@@ -136,7 +172,9 @@ export default function ChatPanel({
         throw new Error(errText.includes("429") ? "429" : errText);
       }
 
-      // Add placeholder streaming message
+      // Add placeholder streaming message and reset typewriter state
+      displayedRef.current = "";
+      typeQueueRef.current = [];
       setMessages(prev => [...prev, { role: "assistant", content: "", streaming: true }]);
 
       const reader = res.body!.getReader();
@@ -145,6 +183,9 @@ export default function ChatPanel({
       let finalSources: Source[] = [];
       let finalMode: Mode = "general";
       let buffer = "";
+
+      // Start the typewriter drain before reading so it's ready immediately
+      startTypewriter();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -160,28 +201,45 @@ export default function ChatPanel({
             const data = JSON.parse(line.slice(6));
             if (data.type === "text") {
               fullText += data.text;
-              const snapshot = fullText;
-              setMessages(prev => {
-                const last = prev[prev.length - 1];
-                return [...prev.slice(0, -1), { ...last, content: snapshot, streaming: true }];
-              });
+              // Push individual characters into the queue — the interval
+              // drains them smoothly rather than applying the full chunk at once.
+              typeQueueRef.current.push(...data.text.split(""));
             } else if (data.type === "done") {
               finalSources = data.sources || [];
               finalMode = data.mode || "general";
               setCurrentMode(finalMode);
-              setMessages(prev => {
-                const last = prev[prev.length - 1];
-                return [...prev.slice(0, -1), {
-                  ...last, content: snapshot, streaming: false,
-                  sources: finalSources, mode: finalMode
-                }];
-              });
             } else if (data.type === "error") {
               throw new Error(data.message);
             }
           } catch { /* skip malformed chunks */ }
         }
       }
+
+      // Wait for the typewriter to finish draining before finalising the
+      // message so it transitions cleanly from streaming to rendered markdown.
+      await new Promise<void>(resolve => {
+        const check = setInterval(() => {
+          if (typeQueueRef.current.length === 0) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 16);
+      });
+
+      stopTypewriter();
+
+      // Switch from plain-text streaming view to full markdown rendering
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (!last || last.role !== "assistant") return prev;
+        return [...prev.slice(0, -1), {
+          ...last,
+          content: fullText,
+          streaming: false,
+          sources: finalSources,
+          mode: finalMode,
+        }];
+      });
 
       // Persist after streaming completes
       await persistMessages(question, fullText, finalSources, finalMode);
@@ -259,13 +317,13 @@ export default function ChatPanel({
               {currentMode && (
                 <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
                   style={{
-                    background: currentMode === "grounded" ? "var(--accent-soft)" : "var(--s2)",
-                    color: currentMode === "grounded" ? "var(--accent)" : "var(--t3)",
-                    border: `1px solid ${currentMode === "grounded" ? "var(--accent-border)" : "var(--b1)"}`,
+                    background: currentMode === "grounded" ? "var(--accent-soft)" : "rgba(52,199,142,0.1)",
+                    color: currentMode === "grounded" ? "var(--accent)" : "var(--green)",
+                    border: `1px solid ${currentMode === "grounded" ? "var(--accent-border)" : "rgba(52,199,142,0.25)"}`,
                   }}>
                   {currentMode === "grounded"
                     ? <><BookOpen size={10} strokeWidth={2} /> Source Grounded</>
-                    : <><Zap size={10} strokeWidth={2} /> General</>}
+                    : <><Zap size={10} strokeWidth={2} /> Web Search</>}
                 </div>
               )}
             </div>
@@ -380,7 +438,7 @@ export default function ChatPanel({
             </div>
           </div>
           <p className="mt-2 text-center text-xs" style={{ color: "var(--t3)" }}>
-            Cognera answers from your materials when available, general knowledge otherwise.
+            Answers from your documents when available — web search for everything else.
           </p>
         </form>
       </div>

@@ -1,5 +1,16 @@
 """
 Context-aware chat — one-shot and streaming endpoints.
+
+Two modes:
+  GROUNDED  — user has uploaded documents and the question matches them.
+              Answers come exclusively from the student's own materials.
+              Google Search is OFF — we want citations from their notes, not the web.
+
+  GENERAL   — no documents, or no sufficiently similar chunks found.
+              Google Search is ON — Cognera can answer current-events questions,
+              look up recent research, explain concepts with up-to-date examples.
+              This is what makes Cognera actually useful as a general study companion
+              rather than a bot that refuses anything not in a PDF.
 """
 import json
 from fastapi import APIRouter, Depends
@@ -9,7 +20,12 @@ from pydantic import BaseModel
 from app.core.auth import CurrentUser, get_current_user
 from app.db.supabase_client import get_supabase, call_supabase
 from app.services.gemini_client import (
-    embed_text, generate_text, generate_text_stream, to_pgvector_literal
+    embed_text,
+    generate_text,
+    generate_text_with_search,
+    generate_text_stream,
+    generate_text_stream_with_search,
+    to_pgvector_literal,
 )
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -18,23 +34,24 @@ SIMILARITY_THRESHOLD = 0.55
 CONTEXT_CHUNKS = 5
 
 SYSTEM_GROUNDED = """You are Cognera, a precise AI study assistant.
-You answer using the student's own course materials provided below.
+You are answering using the student's own course materials provided below.
 Rules:
 - Answer directly and concisely from the provided sources.
-- Cite which source supports each claim: (Source 1), (Source 2), etc.
-- If the materials don't contain the answer, say so, then offer a brief general explanation.
-- After a grounded answer, you may add "Beyond your materials:" for relevant context.
-- Use markdown formatting — headings, bullets, bold — to structure your response clearly.
-- Never pad with filler phrases. Be a tutor, not a chatbot."""
+- Cite which source number supports each claim: (Source 1), (Source 2), etc.
+- If the materials don't contain the answer, say so clearly, then offer a brief general explanation.
+- You may add "Beyond your materials:" to signal supplementary general knowledge.
+- Use markdown — headings, bullets, bold — to structure your response.
+- Be a tutor, not a chatbot. No filler phrases."""
 
-SYSTEM_GENERAL = """You are Cognera, an intelligent study companion.
-No document context is available for this question.
+SYSTEM_GENERAL = """You are Cognera, an intelligent AI study companion with access to web search.
+You can answer questions about anything — course concepts, current events, recent research, code, and general knowledge.
 Rules:
-- Answer with clarity and precision. Students need to understand, not just read.
-- Use examples when explaining concepts.
-- Structure longer answers with headings and bullets.
-- For code questions: provide working code with brief explanations.
-- Be direct. Avoid filler. Act like the smartest person in the study group."""
+- For current events or factual questions, search the web to get accurate, up-to-date information.
+- For academic questions, be precise and give examples.
+- For code, provide working solutions with brief explanations.
+- For general knowledge, be clear and concise.
+- Use markdown formatting to structure longer answers.
+- If asked about something outside your knowledge, use search rather than refusing."""
 
 
 class AskRequest(BaseModel):
@@ -54,16 +71,18 @@ class AskResponse(BaseModel):
 
 
 def _retrieve(user_id: str, question: str):
-    """Embed question, retrieve relevant chunks, determine mode."""
+    """Embed the question and find the most relevant chunks from the user's documents."""
     embedding = embed_text(question)
     result = call_supabase(lambda: get_supabase().rpc(
         "match_document_chunks",
-        {"query_embedding": to_pgvector_literal(embedding),
-         "match_user_id": user_id, "match_count": CONTEXT_CHUNKS},
+        {
+            "query_embedding": to_pgvector_literal(embedding),
+            "match_user_id": user_id,
+            "match_count": CONTEXT_CHUNKS,
+        },
     ).execute())
     chunks = result.data or []
-    relevant = [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
-    return relevant
+    return [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
 
 
 def _build_prompt(question: str, relevant_chunks: list) -> str:
@@ -80,40 +99,54 @@ def _build_prompt(question: str, relevant_chunks: list) -> str:
 def ask(req: AskRequest, user: CurrentUser = Depends(get_current_user)):
     relevant = _retrieve(user.id, req.question)
     prompt = _build_prompt(req.question, relevant)
-    answer = generate_text(prompt)
-    sources = [Source(document_id=c["document_id"], document_title=c["document_title"],
-                      snippet=c["content"][:200]) for c in relevant]
-    return AskResponse(answer=answer, sources=sources,
-                       mode="grounded" if relevant else "general")
+    grounded = bool(relevant)
+
+    # Use web search only when not grounded in documents
+    answer = generate_text(prompt) if grounded else generate_text_with_search(prompt)
+
+    sources = [
+        Source(
+            document_id=c["document_id"],
+            document_title=c["document_title"],
+            snippet=c["content"][:200],
+        )
+        for c in relevant
+    ]
+    return AskResponse(answer=answer, sources=sources, mode="grounded" if grounded else "general")
 
 
 @router.post("/stream")
 def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_user)):
-    """SSE streaming endpoint. Yields text chunks as they arrive from Gemini,
-    followed by a final 'done' event containing sources and mode metadata."""
+    """SSE streaming. Yields text chunks then a final 'done' event with metadata."""
     relevant = _retrieve(user.id, req.question)
     prompt = _build_prompt(req.question, relevant)
-    mode = "grounded" if relevant else "general"
-    sources = [{"document_id": c["document_id"], "document_title": c["document_title"],
-                "snippet": c["content"][:200]} for c in relevant]
+    grounded = bool(relevant)
+    mode = "grounded" if grounded else "general"
+    sources = [
+        {
+            "document_id": c["document_id"],
+            "document_title": c["document_title"],
+            "snippet": c["content"][:200],
+        }
+        for c in relevant
+    ]
+
+    # Select the right generator: grounded uses pure document context,
+    # general uses Google Search for current/real-world questions.
+    stream_fn = generate_text_stream if grounded else generate_text_stream_with_search
 
     def event_stream():
         try:
-            for text_chunk in generate_text_stream(prompt):
+            for text_chunk in stream_fn(prompt):
                 payload = json.dumps({"type": "text", "text": text_chunk})
                 yield f"data: {payload}\n\n"
         except Exception as e:
-            error = json.dumps({"type": "error", "message": str(e)})
-            yield f"data: {error}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
             return
-        done = json.dumps({"type": "done", "sources": sources, "mode": mode})
-        yield f"data: {done}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'sources': sources, 'mode': mode})}\n\n"
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
