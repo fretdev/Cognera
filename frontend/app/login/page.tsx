@@ -91,6 +91,7 @@ export default function LoginPage() {
           padding: "36px 32px",
           opacity: visible ? 1 : 0,
           transition: "opacity 0.16s ease",
+          boxShadow: "var(--card-shadow)",
         }}
       >
         {/* Heading */}

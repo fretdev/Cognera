@@ -8,9 +8,17 @@ export default function AppShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-bg md:flex-row">
+    <div
+      className="flex h-screen flex-col overflow-hidden md:flex-row"
+      style={{ background: "var(--bg)" }}
+    >
       <Sidebar email={email} />
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main
+        className="flex-1 overflow-y-auto"
+        style={{ background: "var(--bg)" }}
+      >
+        {children}
+      </main>
     </div>
   );
 }

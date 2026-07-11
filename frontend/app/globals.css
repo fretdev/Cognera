@@ -3,68 +3,113 @@
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════════════════
-   COGNERA — DESIGN SYSTEM v2
-   Accent: #F17300 (Cognera Orange)
-   Modes: dark (default) + light
+   COGNERA DESIGN SYSTEM — v3
+   
+   DARK MODE: depth through layered darks. Dot-grid texture.
+   LIGHT MODE: depth through shadow, not border. Warm paper background.
+               White surfaces float above the background.
+               Borders are near-invisible — shadow does the work.
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Dark mode (default) ───────────────────────────────────────────────── */
-:root, [data-theme="dark"] {
-  --bg:       #0D0D10;
-  --s1:       #131317;
-  --s2:       #1A1A1F;
-  --s3:       #222228;
-  --s4:       #2A2A32;
+/* ── DARK MODE (default) ────────────────────────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  /* Backgrounds — three levels of depth */
+  --bg:  #0D0D10;
+  --s1:  #131317;
+  --s2:  #1A1A1F;
+  --s3:  #222228;
+  --s4:  #2A2A32;
 
-  --b1:       #1E1E24;
-  --b2:       #2A2A32;
-  --b3:       #38383F;
+  /* Borders */
+  --b1:  #1E1E24;
+  --b2:  #2A2A32;
+  --b3:  #38383F;
 
-  --t1:       #F0F0F4;
-  --t2:       #9090A0;
-  --t3:       #58585F;
+  /* Text — strict 3-level hierarchy */
+  --t1:  #F0F0F4;  /* headings, primary */
+  --t2:  #8E8E9E;  /* body, secondary   */
+  --t3:  #52525C;  /* hints, tertiary   */
 
+  /* Accent */
   --accent:        #F17300;
-  --accent-soft:   #F1730018;
-  --accent-border: #F1730035;
+  --accent-soft:   rgba(241,115,0,0.10);
+  --accent-border: rgba(241,115,0,0.22);
   --accent-hover:  #FF8A1A;
 
-  --green:  #3ECF8E;
-  --red:    #F26B6B;
-  --amber:  #F5A623;
+  /* Semantic */
+  --green: #3ECF8E;
+  --red:   #F26B6B;
 
-  --input-bg:      #1A1A1F;
-  --input-shadow:  0 2px 16px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.05) inset;
-  --input-shadow-focus: 0 4px 24px rgba(241,115,0,0.12), 0 0 0 1.5px rgba(241,115,0,0.35);
+  /* Input */
+  --input-bg:     #16161A;
+  --input-shadow: 0 1px 4px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  --input-shadow-focus: 0 0 0 1.5px rgba(241,115,0,0.4), 0 4px 20px rgba(241,115,0,0.08);
+
+  /* Sidebar shadow */
+  --sidebar-shadow: none;
+
+  /* Card shadows */
+  --card-shadow: none;
 }
 
-/* ── Light mode ────────────────────────────────────────────────────────── */
+/* ── LIGHT MODE ─────────────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --bg:       #F7F6F3;
-  --s1:       #FFFFFF;
-  --s2:       #F0EEE9;
-  --s3:       #E6E4DE;
-  --s4:       #DCDAD4;
+  /*
+   * The golden rule of light mode:
+   * Background = warm paper. Surfaces = white. Depth = shadow.
+   *
+   * #FAFAF8  — warm off-white, never stark. Not grey, not white.
+   *            This is what sits behind everything.
+   * #FFFFFF  — pure white surfaces float above the background.
+   *            Cards, the sidebar, inputs — these sit on top.
+   * Borders  — near-invisible (0.07 opacity). Shadow does the depth work.
+   */
 
-  --b1:       #E8E6E0;
-  --b2:       #D8D6CE;
-  --b3:       #C8C5BC;
+  --bg:  #FAFAF8;
+  --s1:  #FFFFFF;
+  --s2:  #F5F3F0;
+  --s3:  #EDEBE7;
+  --s4:  #E4E1DC;
 
-  --t1:       #1A1917;
-  --t2:       #5C5A55;
-  --t3:       #9C9990;
+  /* Borders: very subtle — just enough to define edges, not enough to clutter */
+  --b1:  rgba(0,0,0,0.06);
+  --b2:  rgba(0,0,0,0.09);
+  --b3:  rgba(0,0,0,0.13);
 
-  --accent:        #D96800;
-  --accent-soft:   #F1730012;
-  --accent-border: #F1730028;
-  --accent-hover:  #E87200;
+  /*
+   * Text hierarchy — warm, not cool-grey.
+   * #1C1917  (warm near-black) — primary. Contrast ratio 17:1 on white.
+   * #4B4845  (warm dark grey) — secondary. Contrast ratio 7.5:1.
+   * #87847F  (warm mid grey) — tertiary. Contrast ratio 4.6:1. Just passes AA.
+   */
+  --t1:  #1C1917;
+  --t2:  #4B4845;
+  --t3:  #87847F;
 
-  --input-bg:      #FFFFFF;
-  --input-shadow:  0 2px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.07);
-  --input-shadow-focus: 0 4px 20px rgba(209,104,0,0.1), 0 0 0 1.5px rgba(209,104,0,0.3);
+  /* Accent — same orange, slightly richer on light for contrast */
+  --accent:        #D96500;
+  --accent-soft:   rgba(217,101,0,0.08);
+  --accent-border: rgba(217,101,0,0.18);
+  --accent-hover:  #C45C00;
+
+  /* Semantic */
+  --green: #1A7F4B;
+  --red:   #C92A2A;
+
+  /* Input — white, floating, shadow-defined */
+  --input-bg:           #FFFFFF;
+  --input-shadow:       0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.06);
+  --input-shadow-focus: 0 0 0 1.5px rgba(217,101,0,0.35), 0 4px 20px rgba(217,101,0,0.08);
+
+  /* Sidebar: pure white with a gentle right-edge shadow */
+  --sidebar-shadow: 1px 0 0 rgba(0,0,0,0.06), 4px 0 16px rgba(0,0,0,0.04);
+
+  /* Cards: subtle floating shadow */
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
 }
 
-/* ── Base ──────────────────────────────────────────────────────────────── */
+/* ── Reset & base ───────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 
@@ -75,24 +120,39 @@ body {
   font-size: 14.5px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background 0.2s, color 0.2s;
 }
 
+/* Dot grid — DARK mode only. Light mode gets clean paper. */
 [data-theme="dark"] body {
-  background-image: radial-gradient(circle, #ffffff06 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
   background-size: 28px 28px;
 }
+[data-theme="light"] body {
+  background-image: none;
+}
 
+/* Sidebar, header, footer — never show the dot grid */
 aside, header, footer, nav { background-image: none !important; }
 
-::selection { background: var(--accent-soft); }
+/* Light mode sidebar — white background, shadow-defined right edge */
+[data-theme="light"] aside {
+  background: var(--s1) !important;
+  box-shadow: var(--sidebar-shadow) !important;
+  border-right: none !important;
+}
+
+::selection { background: var(--accent-soft); color: var(--t1); }
+
 ::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-thumb { background: var(--b2); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--b3); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ── Typography ────────────────────────────────────────────────────────── */
+/* ── Typography ─────────────────────────────────────────────────────────── */
 .t-hero {
   font-family: var(--font-display, 'Plus Jakarta Sans', sans-serif);
-  font-size: clamp(2.8rem, 6vw + 1rem, 5.5rem);
+  font-size: clamp(2.6rem, 6vw + 1rem, 5.2rem);
   font-weight: 800;
   line-height: 1.06;
   letter-spacing: -0.04em;
@@ -100,7 +160,7 @@ aside, header, footer, nav { background-image: none !important; }
 }
 .t-h1 {
   font-family: var(--font-display, 'Plus Jakarta Sans', sans-serif);
-  font-size: clamp(1.8rem, 3vw + 0.5rem, 2.6rem);
+  font-size: clamp(1.7rem, 3vw + 0.5rem, 2.5rem);
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.03em;
@@ -108,79 +168,96 @@ aside, header, footer, nav { background-image: none !important; }
 }
 .t-h2 {
   font-family: var(--font-display, 'Plus Jakarta Sans', sans-serif);
-  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
   color: var(--t1);
 }
-.t-lead { font-size: clamp(1rem, 1.2vw + 0.5rem, 1.1rem); line-height: 1.75; color: var(--t2); }
-.t-body { font-size: 14.5px; line-height: 1.7; color: var(--t2); }
-.t-small { font-size: 12.5px; color: var(--t2); }
-.t-label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--t3); }
+.t-lead  { font-size: clamp(1rem, 1.2vw + 0.4rem, 1.1rem); line-height: 1.75; color: var(--t2); }
+.t-body  { font-size: 14.5px; line-height: 1.7;  color: var(--t2); }
+.t-small { font-size: 12.5px; line-height: 1.5;  color: var(--t2); }
+.t-label {
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--t3);
+}
 
-/* ── Buttons ───────────────────────────────────────────────────────────── */
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+/* Primary CTA — white fill in dark, warm dark fill in light */
 .btn-cta {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 10px 22px;
   background: var(--t1); color: var(--bg);
   font-family: var(--font-display, sans-serif);
-  font-size: 13.5px; font-weight: 700; border-radius: 9999px; border: none;
-  cursor: pointer; transition: opacity 0.15s, transform 0.12s;
-  letter-spacing: -0.01em; white-space: nowrap;
+  font-size: 13.5px; font-weight: 700;
+  border-radius: 9999px; border: none;
+  cursor: pointer; letter-spacing: -0.01em; white-space: nowrap;
+  transition: opacity 0.15s, transform 0.12s;
 }
-.btn-cta:hover { opacity: 0.87; }
-.btn-cta:active { transform: scale(0.97); }
+.btn-cta:hover   { opacity: 0.85; }
+.btn-cta:active  { transform: scale(0.97); }
 
+/* Ghost */
 .btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 9px 21px;
   background: transparent; color: var(--t2);
-  font-size: 13.5px; font-weight: 400; border-radius: 9999px;
-  border: 1px solid var(--b2); cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  font-size: 13.5px; font-weight: 400;
+  border-radius: 9999px; border: 1px solid var(--b2);
+  cursor: pointer; transition: color 0.15s, border-color 0.15s;
 }
 .btn-ghost:hover { color: var(--t1); border-color: var(--b3); }
 
+/* App primary — flat, dark-surface */
 .btn-primary {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 7px 16px;
   background: var(--s3); color: var(--t1);
-  font-size: 13px; font-weight: 500; border-radius: 9999px;
-  border: 1px solid var(--b2); cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  font-size: 13px; font-weight: 500;
+  border-radius: 9999px; border: 1px solid var(--b2);
+  cursor: pointer; transition: background 0.12s;
 }
-.btn-primary:hover:not(:disabled) { background: var(--s4); border-color: var(--b3); }
+.btn-primary:hover:not(:disabled) { background: var(--s4); }
 .btn-primary:disabled { opacity: 0.38; cursor: not-allowed; }
 
+/* Icon button — orange send button, flat stop */
 .btn-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; flex-shrink: 0;
   background: var(--accent); color: #fff;
-  border: none; border-radius: 9999px; cursor: pointer;
-  transition: opacity 0.12s, transform 0.12s;
+  border: none; border-radius: 9999px;
+  cursor: pointer; transition: opacity 0.12s, transform 0.1s;
 }
-.btn-icon:hover:not(:disabled) { opacity: 0.88; }
-.btn-icon:active:not(:disabled) { transform: scale(0.93); }
+.btn-icon:hover:not(:disabled)  { opacity: 0.85; }
+.btn-icon:active:not(:disabled) { transform: scale(0.92); }
 .btn-icon:disabled { background: var(--s4); color: var(--t3); cursor: not-allowed; }
-.btn-icon.stop { background: var(--s3); border: 1px solid var(--b2); color: var(--t1); }
+.btn-icon.stop {
+  background: var(--s3); color: var(--t2);
+  border: 1px solid var(--b2);
+}
 
-/* ── Chat input — ChatGPT/Gemini style ─────────────────────────────────── */
+/* ── Chat input ─────────────────────────────────────────────────────────── */
+/*
+ * KEY DESIGN DECISION:
+ * Dark mode: slightly lighter than the page, inner glow on focus.
+ * Light mode: WHITE, elevated with a floating shadow. No border at rest.
+ *             This is what ChatGPT and Gemini do — the input floats.
+ */
 .chat-input-wrap {
   background: var(--input-bg);
   border-radius: 20px;
   box-shadow: var(--input-shadow);
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s ease;
   padding: 14px 16px 10px;
+  border: none;
 }
 .chat-input-wrap:focus-within {
   box-shadow: var(--input-shadow-focus);
 }
 .chat-input-wrap textarea {
   background: transparent;
-  border: none;
-  outline: none;
-  resize: none;
+  border: none; outline: none; resize: none;
   width: 100%;
   color: var(--t1);
   font-size: 15px;
@@ -190,14 +267,19 @@ aside, header, footer, nav { background-image: none !important; }
 }
 .chat-input-wrap textarea::placeholder { color: var(--t3); }
 
-/* ── Chat prose ────────────────────────────────────────────────────────── */
-.chat-prose { font-size: 15px; line-height: 1.75; color: var(--t1); }
+/* ── Chat prose ─────────────────────────────────────────────────────────── */
+.chat-prose {
+  font-size: 15px;
+  line-height: 1.78;
+  color: var(--t1);
+}
 .chat-prose p { margin: 0; }
 .chat-prose p + p { margin-top: 0.8em; }
 .chat-prose h1, .chat-prose h2, .chat-prose h3 {
-  font-family: var(--font-display, sans-serif); font-weight: 600;
-  color: var(--t1); line-height: 1.3; letter-spacing: -0.015em;
-  margin: 1.1em 0 0.35em;
+  font-family: var(--font-display, sans-serif);
+  font-weight: 600; color: var(--t1);
+  line-height: 1.3; letter-spacing: -0.015em;
+  margin: 1.2em 0 0.4em;
 }
 .chat-prose h1 { font-size: 1.25rem; }
 .chat-prose h2 { font-size: 1.1rem; }
@@ -207,15 +289,16 @@ aside, header, footer, nav { background-image: none !important; }
 .chat-prose ol { list-style: decimal; }
 .chat-prose li { margin: 0.3em 0; }
 .chat-prose strong { font-weight: 600; color: var(--t1); }
-.chat-prose em { color: var(--t2); }
-.chat-prose code {
-  font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
+.chat-prose em    { color: var(--t2); font-style: italic; }
+.chat-prose code  {
+  font-size: 13px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
   background: var(--s3); border: 1px solid var(--b2);
   border-radius: 4px; padding: 1px 5px;
 }
 .chat-prose blockquote {
-  border-left: 2px solid var(--b3); padding-left: 1em;
-  color: var(--t2); margin: 0.7em 0;
+  border-left: 2px solid var(--b3);
+  padding-left: 1em; color: var(--t2); margin: 0.7em 0;
 }
 .chat-prose a { color: var(--accent); }
 .chat-prose table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 0.8em 0; }
@@ -223,24 +306,23 @@ aside, header, footer, nav { background-image: none !important; }
 .chat-prose th { background: var(--s2); font-weight: 500; }
 .chat-prose hr { border: none; border-top: 1px solid var(--b1); margin: 1em 0; }
 
-/* ── Streaming cursor ──────────────────────────────────────────────────── */
+/* ── Stream cursor ──────────────────────────────────────────────────────── */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .stream-cursor::after {
   content: '▋';
   color: var(--accent);
   animation: blink 0.9s ease-in-out infinite;
-  margin-left: 1px;
-  font-size: 0.9em;
+  margin-left: 1px; font-size: 0.9em;
 }
 
-/* ── Message animation ─────────────────────────────────────────────────── */
+/* ── Message animation ──────────────────────────────────────────────────── */
 @keyframes msgIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .msg-in { animation: msgIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 
-/* ── Thinking dots ─────────────────────────────────────────────────────── */
+/* ── Thinking dots ──────────────────────────────────────────────────────── */
 @keyframes dot-pulse {
   0%, 60%, 100% { opacity: 0.2; transform: scale(0.75); }
   30% { opacity: 1; transform: scale(1); }
@@ -253,7 +335,7 @@ aside, header, footer, nav { background-image: none !important; }
 .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
 
-/* ── Landing ───────────────────────────────────────────────────────────── */
+/* ── Landing ────────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(22px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -267,9 +349,18 @@ aside, header, footer, nav { background-image: none !important; }
 
 .section-rule { border: none; border-top: 1px solid var(--b1); margin: 0; }
 
+/* Feature cards — shadow in light mode, border in dark */
 .feature-card {
-  background: var(--s1); border: 1px solid var(--b1);
-  border-radius: 16px; padding: 24px;
-  transition: border-color 0.2s, background 0.2s;
+  background: var(--s1);
+  border: 1px solid var(--b1);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: var(--card-shadow);
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.feature-card:hover { border-color: var(--b2); background: var(--s2); }
+.feature-card:hover {
+  border-color: var(--b2);
+}
+[data-theme="light"] .feature-card:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.05);
+}

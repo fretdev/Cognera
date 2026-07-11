@@ -180,6 +180,7 @@ export default function Sidebar({ email }: { email?: string | null }) {
   const sidebarBase: React.CSSProperties = {
     background: "var(--s1)",
     borderRight: "1px solid var(--b1)",
+    boxShadow: "var(--sidebar-shadow)",
     backgroundImage: "none",
   };
 

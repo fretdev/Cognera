@@ -341,8 +341,17 @@ export default function ChatPanel({
                         style={{ color: "var(--t3)" }}>
                         <Pencil size={13} strokeWidth={1.75} />
                       </button>
-                      <div className="rounded-2xl rounded-tr-md px-4 py-3 text-sm"
-                        style={{ background: "var(--s2)", color: "var(--t1)" }}>
+                      <div
+                        style={{
+                          background: "var(--s2)",
+                          color: "var(--t1)",
+                          border: "1px solid var(--b1)",
+                          borderRadius: "18px 18px 4px 18px",
+                          padding: "10px 16px",
+                          fontSize: "14.5px",
+                          lineHeight: "1.65",
+                        }}
+                      >
                         {m.content}
                       </div>
                     </div>

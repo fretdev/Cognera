@@ -75,7 +75,7 @@ export default function DocumentsPanel() {
 
       <form
         onSubmit={handleUpload}
-        className="mt-6 flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5"
+        className="mt-6 flex flex-col gap-3 rounded-2xl p-5" style={{background:"var(--s1)",border:"1px solid var(--b1)",boxShadow:"var(--card-shadow)"}}
       >
         <label
           htmlFor="file-input"
