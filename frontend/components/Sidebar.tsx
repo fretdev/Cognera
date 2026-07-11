@@ -5,7 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   FileText, Layers, CalendarClock, LogOut,
-  PanelLeftClose, PanelLeftOpen, Menu, X, Plus, Trash2, MessageSquare
+  PanelLeftClose, PanelLeftOpen, Menu, X, Plus, Trash2, MessageSquare,
+  UserCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { CogneraMark, CogneraWordmark } from "@/components/brand/CogneraLogo";
@@ -16,6 +17,7 @@ const NAV = [
   { href: "/documents",   label: "Documents",            icon: FileText },
   { href: "/study-tools", label: "Flashcards & Quizzes", icon: Layers },
   { href: "/planner",     label: "Planner",               icon: CalendarClock },
+  { href: "/profile",     label: "Profile",               icon: UserCircle },
 ];
 
 function groupConversations(list: Conversation[]) {
