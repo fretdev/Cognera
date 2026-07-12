@@ -7,8 +7,9 @@ type Params = { id: string };
 export default async function ConversationPage({
   params,
 }: {
-  params: Params;
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
   const supabase = await createClient();
   const {
     data: { user },
@@ -18,7 +19,7 @@ export default async function ConversationPage({
   const { data: conversation } = await supabase
     .from("conversations")
     .select("id, title")
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("user_id", user!.id)
     .single();
 
@@ -27,7 +28,7 @@ export default async function ConversationPage({
   const { data: rows } = await supabase
     .from("messages")
     .select("role, content, sources, mode")
-    .eq("conversation_id", params.id)
+    .eq("conversation_id", id)
     .order("created_at");
 
   const initialMessages = (rows || []).map((m) => ({
@@ -39,7 +40,7 @@ export default async function ConversationPage({
 
   return (
     <ChatPanel
-      conversationId={params.id}
+      conversationId={id}
       initialMessages={initialMessages}
     />
   );
