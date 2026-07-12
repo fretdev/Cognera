@@ -208,9 +208,12 @@ export default function Sidebar({ email }: { email?: string | null }) {
       <div className="md:hidden flex items-center justify-between px-4 py-3"
         style={{ ...sidebarBase, borderRight: "none", borderBottom: "1px solid var(--b1)" }}>
         <Link href="/chat" aria-label="Go to chat"><CogneraWordmark size={20} /></Link>
-        <button onClick={() => setMobileOpen(true)} style={{ color: "var(--t2)" }} aria-label="Open menu">
-          <Menu size={18} strokeWidth={1.75} />
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle iconOnly />
+          <button onClick={() => setMobileOpen(true)} style={{ color: "var(--t2)" }} aria-label="Open menu">
+            <Menu size={18} strokeWidth={1.75} />
+          </button>
+        </div>
       </div>
 
       {/* Mobile drawer */}

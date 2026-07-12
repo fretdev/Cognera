@@ -117,11 +117,20 @@ body {
   background: var(--bg);
   color: var(--t1);
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 14.5px;
+  font-size: 15px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background 0.2s, color 0.2s;
+}
+
+/* Slightly smaller on mobile so content fits without horizontal scroll */
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  .t-hero { font-size: clamp(2.2rem, 10vw, 3rem) !important; }
+  .t-h1   { font-size: clamp(1.5rem, 7vw, 2rem) !important; }
+  .chat-prose { font-size: 14px; }
+  .chat-input-wrap textarea { font-size: 16px; } /* prevents iOS zoom on focus */
 }
 
 /* Dot grid — DARK mode only. Light mode gets clean paper. */
@@ -260,7 +269,7 @@ aside, header, footer, nav { background-image: none !important; }
   border: none; outline: none; resize: none;
   width: 100%;
   color: var(--t1);
-  font-size: 15px;
+  font-size: 16px; /* 16px minimum prevents iOS Safari zoom on focus */
   line-height: 1.65;
   font-family: var(--font-sans, sans-serif);
   max-height: 220px;

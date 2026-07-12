@@ -230,29 +230,26 @@ export default function LandingPage() {
       <Section className="pt-32 pb-20">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-10 items-start">
           <div>
-            <div className="fade-up mb-7 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs"
-              style={{ background: "var(--accent-soft)", border: "1px solid var(--accent-border)", color: "var(--accent)" }}>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />
-              Built for university students · Free to use
-            </div>
-            <h1 className="fade-up delay-1 t-hero mb-5">
-              The AI tutor<br />
-              <span style={{ color: "var(--accent)" }}>that read</span><br />
-              your notes
+            {/* No badge — the headline earns attention on its own */}
+            <h1 className="fade-up t-hero mb-6">
+              Your notes.<br />
+              <span style={{ color: "var(--accent)" }}>Your answers.</span>
             </h1>
-            <p className="fade-up delay-2 t-lead mb-8 max-w-md">
-              Upload your lecture slides and textbooks. Cognera answers your questions from your own materials — not the internet — and cites exactly where it found each answer.
+            <p className="fade-up delay-1 t-lead mb-8 max-w-md">
+              Upload your lecture slides, textbooks, and past papers.
+              Ask any question and get answers pulled directly from
+              your own materials — cited, accurate, and yours.
             </p>
-            <div className="fade-up delay-3 flex flex-wrap gap-3 items-center mb-10">
+            <div className="fade-up delay-2 flex flex-wrap gap-3 items-center mb-12">
               <Link href="/login" className="btn-cta">
                 Start for free <ArrowRight size={14} strokeWidth={2.5} />
               </Link>
-              <Link href="#how" className="btn-ghost">How it works</Link>
+              <Link href="#how" className="btn-ghost">See how it works</Link>
             </div>
-            <div className="fade-up delay-4 flex gap-10">
+            <div className="fade-up delay-3 flex gap-10">
               <Stat label="Any PDF" sub="Upload instantly" />
               <Stat label="Cited" sub="Every answer" />
-              <Stat label="Active" sub="Recall built in" />
+              <Stat label="Free" sub="No card needed" />
             </div>
           </div>
           <div className="fade-up delay-2"><ChatDemo /></div>
