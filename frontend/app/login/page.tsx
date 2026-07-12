@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { CogneraWordmark } from "@/components/brand/CogneraLogo";
 import { ArrowLeft } from "lucide-react";
+export const dynamic = "force-dynamic";
 
 type Mode = "login" | "signup";
 

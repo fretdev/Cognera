@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
+export const dynamic = "force-dynamic";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"], variable: "--font-display",
