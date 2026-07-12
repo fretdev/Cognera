@@ -159,7 +159,7 @@ function Footer() {
               An AI study companion built for university students. Upload your course materials and get grounded, cited answers — not generic internet content.
             </p>
             <div className="mt-6 flex items-center gap-3">
-              <a href="https://github.com" aria-label="GitHub"
+              <a href="https://github.com/fretdev/Cognera" aria-label="GitHub"
                 className="h-8 w-8 rounded-lg flex items-center justify-center transition-colors"
                 style={{ background: "var(--s3)", color: "var(--t2)" }}
                 onMouseEnter={e => (e.currentTarget.style.color = "var(--t1)")}
@@ -203,7 +203,7 @@ function Footer() {
         {/* Bottom */}
         <div className="py-5 flex flex-col sm:flex-row items-center justify-between gap-3" style={{ borderTop: "1px solid var(--b1)" }}>
           <p className="text-xs" style={{ color: "var(--t3)" }}>
-            © {new Date().getFullYear()} Cognera. A final-year project built for students worldwide.
+            © {new Date().getFullYear()} Cognera. Built for students worldwide.
           </p>
           <div className="flex items-center gap-4">
             {["Privacy", "Terms", "Contact"].map(l => (
