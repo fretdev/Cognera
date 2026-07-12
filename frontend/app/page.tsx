@@ -30,10 +30,10 @@ function Nav() {
       <div className="mx-auto max-w-6xl flex items-center justify-between px-5 md:px-10 py-4">
         <CogneraWordmark size={22} />
         <div className="flex items-center gap-3">
-          <div className="hidden sm:block"><ThemeToggle /></div>
+          <ThemeToggle iconOnly />
           <Link href="/login" className="t-small transition-colors" style={{ color: "var(--t2)" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "var(--t1)")}
-            onMouseLeave={e => (e.currentTarget.style.color = "var(--t2)")}>Sign in</Link>
+          onMouseEnter={e => (e.currentTarget.style.color = "var(--t1)")}
+          onMouseLeave={e => (e.currentTarget.style.color = "var(--t2)")}>Sign in</Link>
           <Link href="/login" className="btn-cta" style={{ padding: "8px 18px", fontSize: "13px" }}>Get started</Link>
         </div>
       </div>
