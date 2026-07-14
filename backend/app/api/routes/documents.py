@@ -5,130 +5,100 @@ from app.db.supabase_client import get_supabase, call_supabase
 from app.services.document_processor import chunk_text, extract_text
 from app.services.gemini_client import embed_text, to_pgvector_literal
 
-router = APIRouter(prefix="/documents", tags=["documents"])
-MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
-STORAGE_BUCKET = "documents"
+router   = APIRouter(prefix="/documents", tags=["documents"])
+MAX_SIZE = 25 * 1024 * 1024  # 25 MB
+BUCKET   = "documents"
+
+ALLOWED_TYPES = {
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.ms-powerpoint",
+    "text/plain", "text/markdown", "text/csv", "text/x-markdown",
+}
+ALLOWED_EXT = {".pdf",".docx",".doc",".pptx",".ppt",".txt",".md",".csv",".markdown"}
 
 
 @router.get("")
 def list_documents(user: CurrentUser = Depends(get_current_user)):
-    result = call_supabase(
-        lambda: get_supabase()
+    result = call_supabase(lambda: get_supabase()
         .table("documents")
-        .select("id, title, summary, created_at")
+        .select("id, title, summary, created_at, last_accessed_at")
         .eq("user_id", user.id)
         .order("created_at", desc=True)
-        .execute()
-    )
+        .execute())
     return result.data
 
 
-# IMPORTANT: /upload must be registered BEFORE /{document_id}
-# FastAPI matches routes in definition order — if /{document_id} came first,
-# POST /documents/upload would match it with document_id="upload" and return
-# 405 because only DELETE is registered for that dynamic path.
+# /upload MUST come before /{document_id} — FastAPI matches in definition order
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
     user: CurrentUser = Depends(get_current_user),
 ):
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    filename = file.filename or "upload"
+    ext      = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    ct       = (file.content_type or "").lower()
 
-    pdf_bytes = await file.read()
-    if len(pdf_bytes) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(status_code=400, detail="File exceeds the 20MB limit")
+    if ct not in ALLOWED_TYPES and ext not in ALLOWED_EXT:
+        raise HTTPException(status_code=400,
+            detail=f"Unsupported file type. Supported: PDF, Word, PowerPoint, plain text, CSV, Markdown.")
+
+    data = await file.read()
+    if len(data) > MAX_SIZE:
+        raise HTTPException(status_code=400, detail="File exceeds the 25 MB limit.")
 
     try:
-        text = extract_text(pdf_bytes)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Could not read this file as a PDF")
+        text = extract_text(data, ct, filename)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not read file: {e}")
 
     if not text.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="No extractable text found — this PDF may be scanned/image-only",
-        )
+        raise HTTPException(status_code=400,
+            detail="No extractable text found. The file may be image-only or empty.")
 
-    document_id = str(uuid.uuid4())
-    storage_path = f"{user.id}/{document_id}.pdf"
+    doc_id  = str(uuid.uuid4())
+    storage = f"{user.id}/{doc_id}{ext or '.bin'}"
 
-    get_supabase().storage.from_(STORAGE_BUCKET).upload(
-        storage_path,
-        pdf_bytes,
-        file_options={"content-type": "application/pdf"},
+    # Store original file
+    get_supabase().storage.from_(BUCKET).upload(
+        storage, data,
+        file_options={"content-type": ct or "application/octet-stream"},
     )
 
-    call_supabase(
-        lambda: get_supabase()
-        .table("documents")
-        .insert({
-            "id": document_id,
-            "user_id": user.id,
-            "title": file.filename or "Untitled document",
-            "storage_path": storage_path,
-        })
-        .execute()
-    )
+    # Insert document row (last_accessed_at defaults to now via DB default)
+    call_supabase(lambda: get_supabase().table("documents").insert({
+        "id": doc_id, "user_id": user.id,
+        "title": filename, "storage_path": storage,
+    }).execute())
 
+    # Chunk → embed → store
     chunks = chunk_text(text)
-    rows = [
-        {
-            "document_id": document_id,
-            "user_id": user.id,
-            "content": chunk,
-            "chunk_index": i,
-            "embedding": to_pgvector_literal(embed_text(chunk)),
-        }
-        for i, chunk in enumerate(chunks)
+    rows   = [
+        {"document_id": doc_id, "user_id": user.id,
+         "content": c, "chunk_index": i,
+         "embedding": to_pgvector_literal(embed_text(c))}
+        for i, c in enumerate(chunks)
     ]
-
     if rows:
-        call_supabase(
-            lambda: get_supabase()
-            .table("document_chunks")
-            .insert(rows)
-            .execute()
-        )
+        call_supabase(lambda: get_supabase()
+            .table("document_chunks").insert(rows).execute())
 
-    return {
-        "document_id": document_id,
-        "title": file.filename,
-        "chunks_created": len(rows),
-    }
+    return {"document_id": doc_id, "title": filename, "chunks_created": len(rows)}
 
 
 @router.delete("/{document_id}")
-def delete_document(
-    document_id: str,
-    user: CurrentUser = Depends(get_current_user),
-):
-    result = call_supabase(
-        lambda: get_supabase()
-        .table("documents")
-        .select("storage_path")
-        .eq("id", document_id)
-        .eq("user_id", user.id)
-        .execute()
-    )
-
-    if not result.data:
+def delete_document(document_id: str, user: CurrentUser = Depends(get_current_user)):
+    res = call_supabase(lambda: get_supabase()
+        .table("documents").select("storage_path")
+        .eq("id", document_id).eq("user_id", user.id).execute())
+    if not res.data:
         raise HTTPException(status_code=404, detail="Document not found")
-
-    storage_path = result.data[0]["storage_path"]
-
     try:
-        get_supabase().storage.from_(STORAGE_BUCKET).remove([storage_path])
+        get_supabase().storage.from_(BUCKET).remove([res.data[0]["storage_path"]])
     except Exception:
         pass
-
-    call_supabase(
-        lambda: get_supabase()
-        .table("documents")
-        .delete()
-        .eq("id", document_id)
-        .eq("user_id", user.id)
-        .execute()
-    )
-
+    call_supabase(lambda: get_supabase().table("documents")
+        .delete().eq("id", document_id).eq("user_id", user.id).execute())
     return {"deleted": document_id}
