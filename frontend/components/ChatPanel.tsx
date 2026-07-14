@@ -577,7 +577,7 @@ export default function ChatPanel({
                   title="Attach file — PDF, Word, PowerPoint, text, CSV"
                   style={{
                     background: "none", border: "none", cursor: "pointer",
-                    color: attachedFile ? "var(--accent)" : "var(--t3)",
+                    color: attachedFile ? "var(--accent)" : "var(--t2)",
                     padding: "2px", borderRadius: "6px",
                     display: "flex", alignItems: "center",
                     transition: "color 0.15s",
