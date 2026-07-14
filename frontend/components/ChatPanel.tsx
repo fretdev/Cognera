@@ -6,7 +6,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   ArrowUp, ArrowDown, Square, FileText,
-  Pencil, AlertCircle, BookOpen, Zap, Paperclip, X,
+  Pencil, AlertCircle, BookOpen, Zap, Plus, X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { createClient } from "@/lib/supabase/client";
@@ -545,7 +545,7 @@ export default function ChatPanel({
                 background: "var(--accent-soft)", border: "1px solid var(--accent-border)",
                 borderRadius: "8px", fontSize: "12.5px", color: "var(--accent)",
               }}>
-                <Paperclip size={12} strokeWidth={2} />
+                <Plus size={12} strokeWidth={2} />
                 <span style={{ maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {attachedFile.name}
                 </span>
@@ -586,7 +586,7 @@ export default function ChatPanel({
                   onMouseEnter={e => { if (!loading && !uploading) (e.currentTarget.style.color = "var(--t1)"); }}
                   onMouseLeave={e => { (e.currentTarget.style.color = attachedFile ? "var(--accent)" : "var(--t3)"); }}
                 >
-                  <Paperclip size={17} strokeWidth={1.75} />
+                  <Plus size={17} strokeWidth={1.75} />
                 </button>
                 <span style={{ fontSize: "11.5px", color: "var(--t3)", userSelect: "none" }}>
                   ⌘ Enter to send
