@@ -1,90 +1,150 @@
 "use client";
 
-import { BookOpen, Layers, Code2, Lightbulb, Brain, FileText } from "lucide-react";
+import {
+  BookOpen, Layers, Code2, Lightbulb, Brain, FileText,
+} from "lucide-react";
 
 const QUICK_STARTS = [
   {
-    label: "Summarize Document",
-    prompt: "Summarize the key points from my uploaded document.",
+    label: "What does my document cover?",
+    prompt: "Give me a structured overview of everything covered in my uploaded documents — main topics, key concepts, and important details.",
     icon: FileText,
     category: "study",
   },
   {
-    label: "Generate Flashcards",
-    prompt: "Generate 10 flashcards from my course material to help me study.",
+    label: "Generate flashcards",
+    prompt: "Generate 10 flashcards from the most important concepts in my uploaded documents.",
     icon: Layers,
     category: "study",
   },
   {
-    label: "Explain Concepts",
-    prompt: "Explain this concept clearly with examples: ",
+    label: "Explain a concept",
+    prompt: "Explain the most important concept from my documents in simple terms with examples.",
     icon: Brain,
     category: "study",
   },
   {
-    label: "Debug My Code",
-    prompt: "Help me debug this code and explain what's wrong: ",
+    label: "Debug my code",
+    prompt: "Help me debug this code and explain what's wrong:\n\n",
     icon: Code2,
     category: "general",
   },
   {
-    label: "Brainstorm Ideas",
+    label: "Brainstorm ideas",
     prompt: "Help me brainstorm ideas for ",
     icon: Lightbulb,
     category: "general",
   },
   {
-    label: "Study Plan",
+    label: "Study plan",
     prompt: "Help me build a structured study plan for my exam on ",
     icon: BookOpen,
     category: "general",
   },
 ];
 
-export default function WelcomeView({ onQuickStart }: { onQuickStart: (prompt: string) => void }) {
+export default function WelcomeView({
+  onQuickStart,
+}: {
+  onQuickStart: (prompt: string) => void;
+}) {
   return (
-    <div className="mt-16 md:mt-24">
-      <h1 className="gradient-text text-center text-2xl font-medium md:text-3xl">
+    <div style={{ marginTop: "60px", textAlign: "center" }}>
+      <h1
+        className="gradient-text"
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: "clamp(1.6rem, 3vw + 0.5rem, 2.4rem)",
+          fontWeight: 700,
+          letterSpacing: "-0.03em",
+          lineHeight: 1.15,
+          marginBottom: "12px",
+        }}
+      >
         Welcome to Cognera
       </h1>
-      <p className="mt-3 text-center text-sm text-muted">
-        Upload documents to get grounded answers from your course materials, or
-        ask anything as a general study companion.
+      <p style={{ fontSize: "14.5px", color: "var(--t2)", marginBottom: "40px" }}>
+        Upload your documents and ask anything — or start with one of these.
       </p>
 
-      <div className="mt-10">
-        <p className="mb-3 text-xs font-medium uppercase tracking-wide text-muted">
-          Study Tasks
+      {/* Study tasks */}
+      <div style={{ textAlign: "left" }}>
+        <p style={{
+          fontSize: "11px", fontWeight: 600, letterSpacing: "0.07em",
+          textTransform: "uppercase", color: "var(--t3)", marginBottom: "10px",
+        }}>
+          From your documents
         </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {QUICK_STARTS.filter((q) => q.category === "study").map(({ label, prompt, icon: Icon }) => (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "8px",
+          marginBottom: "24px",
+        }}>
+          {QUICK_STARTS.filter(q => q.category === "study").map(({ label, prompt, icon: Icon }) => (
             <button
               key={label}
               type="button"
               aria-label={`Quick start: ${label}`}
               onClick={() => onQuickStart(prompt)}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left text-sm text-ink transition-colors hover:bg-bg"
+              style={{
+                display: "flex", alignItems: "center", gap: "10px",
+                background: "var(--s1)", border: "1px solid var(--b1)",
+                borderRadius: "12px", padding: "12px 14px",
+                textAlign: "left", cursor: "pointer",
+                transition: "border-color 0.15s, background 0.15s",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--b2)";
+                (e.currentTarget as HTMLElement).style.background = "var(--s2)";
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--b1)";
+                (e.currentTarget as HTMLElement).style.background = "var(--s1)";
+              }}
             >
-              <Icon size={16} strokeWidth={1.5} className="flex-shrink-0 text-muted" />
-              {label}
+              <Icon size={15} strokeWidth={1.75} style={{ color: "var(--accent)", flexShrink: 0 }} />
+              <span style={{ fontSize: "13.5px", color: "var(--t1)", lineHeight: 1.4 }}>{label}</span>
             </button>
           ))}
         </div>
 
-        <p className="mb-3 mt-6 text-xs font-medium uppercase tracking-wide text-muted">
-          General Tasks
+        {/* General tasks */}
+        <p style={{
+          fontSize: "11px", fontWeight: 600, letterSpacing: "0.07em",
+          textTransform: "uppercase", color: "var(--t3)", marginBottom: "10px",
+        }}>
+          General tasks
         </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {QUICK_STARTS.filter((q) => q.category === "general").map(({ label, prompt, icon: Icon }) => (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: "8px",
+        }}>
+          {QUICK_STARTS.filter(q => q.category === "general").map(({ label, prompt, icon: Icon }) => (
             <button
               key={label}
               type="button"
               aria-label={`Quick start: ${label}`}
               onClick={() => onQuickStart(prompt)}
-              className="flex items-center gap-3 rounded-2xl border border-border bg-surface px-4 py-3 text-left text-sm text-ink transition-colors hover:bg-bg"
+              style={{
+                display: "flex", alignItems: "center", gap: "10px",
+                background: "var(--s1)", border: "1px solid var(--b1)",
+                borderRadius: "12px", padding: "12px 14px",
+                textAlign: "left", cursor: "pointer",
+                transition: "border-color 0.15s, background 0.15s",
+              }}
+              onMouseEnter={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--b2)";
+                (e.currentTarget as HTMLElement).style.background = "var(--s2)";
+              }}
+              onMouseLeave={e => {
+                (e.currentTarget as HTMLElement).style.borderColor = "var(--b1)";
+                (e.currentTarget as HTMLElement).style.background = "var(--s1)";
+              }}
             >
-              <Icon size={16} strokeWidth={1.5} className="flex-shrink-0 text-muted" />
-              {label}
+              <Icon size={15} strokeWidth={1.75} style={{ color: "var(--t3)", flexShrink: 0 }} />
+              <span style={{ fontSize: "13.5px", color: "var(--t1)", lineHeight: 1.4 }}>{label}</span>
             </button>
           ))}
         </div>
