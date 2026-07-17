@@ -50,16 +50,16 @@ def _call_with_retry(fn, retries: int = 4, base_delay: float = 2.0):
 def generate_text(prompt: str, model: str | None = None) -> str:
     """One-shot text generation with retry."""
     client = get_gemini_client()
+
     def _call():
         return client.models.generate_content(model=model or settings.gemini_chat_model, contents=prompt)
     return _call_with_retry(_call).text
 
 
 def generate_text_with_search(prompt: str, model: str | None = None) -> str:
-    """One-shot generation with Google Search grounding enabled.
-    Used for general-mode queries (no document context) so Cognera can
-    answer current-events and real-world questions rather than refusing."""
+    """Generation with Google Search grounding for general-mode queries."""
     client = get_gemini_client()
+
     def _call():
         return client.models.generate_content(
             model=model or settings.gemini_chat_model,
@@ -83,9 +83,7 @@ def generate_text_stream(prompt: str, model: str | None = None):
 
 
 def generate_text_stream_with_search(prompt: str, model: str | None = None):
-    """Stream generation with Google Search grounding (used for general mode).
-    Note: Gemini streaming with tools may buffer more than plain streaming —
-    chunks still arrive progressively but may be slightly larger batches."""
+    """Streaming generation with Google Search grounding."""
     client = get_gemini_client()
     for chunk in client.models.generate_content_stream(
         model=model or settings.gemini_chat_model,
@@ -146,7 +144,8 @@ def embed_text(text: str) -> list[float]:
         return client.models.embed_content(
             model=settings.gemini_embedding_model,
             contents=text,
-            config=types.EmbedContentConfig(output_dimensionality=EMBEDDING_DIMENSION),
+            config=types.EmbedContentConfig(
+                output_dimensionality=EMBEDDING_DIMENSION),
         )
 
     result = _call_with_retry(_call)

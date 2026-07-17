@@ -524,17 +524,24 @@ export default function ChatPanel({
 
         <form onSubmit={handleSend} style={{ maxWidth: "700px", margin: "0 auto" }}>
           {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_FILES}
-            className="sr-only"
-            onChange={e => {
-              const f = e.target.files?.[0];
-              if (f) setAttachedFile(f);
-              e.target.value = "";
-            }}
-          />
+            <input
+              ref={fileInputRef}
+              id="chat-file-input"
+              type="file"
+              accept={ACCEPTED_FILES}
+              style={{
+                  position: "absolute",
+                  width: "1px", height: "1px",
+                  padding: 0, margin: "-1px",
+                  overflow: "hidden", clip: "rect(0,0,0,0)",
+                  whiteSpace: "nowrap", border: 0,
+              }}
+              onChange={e => {
+                const f = e.target.files?.[0];
+                if (f) setAttachedFile(f);
+                e.target.value = "";
+              }}
+            />
 
           <div className="chat-input-wrap">
             {/* Attached file chip */}
@@ -569,25 +576,22 @@ export default function ChatPanel({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 {/* Attach button */}
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  aria-label="Attach file (PDF, Word, PowerPoint, text)"
-                  disabled={loading || uploading}
-                  title="Attach file — PDF, Word, PowerPoint, text, CSV"
+                {/* Attach — label directly triggers file input, no JS .click() needed */}
+                <label
+                    htmlFor="chat-file-input"
+                    aria-label="Attach file"
+                    title="Attach file — PDF, Word, PowerPoint, text, CSV"
                   style={{
-                    background: "none", border: "none", cursor: "pointer",
-                    color: attachedFile ? "var(--accent)" : "var(--t3)",
-                    padding: "2px", borderRadius: "6px",
+                    cursor: loading || uploading ? "not-allowed" : "pointer",
+                    color: attachedFile ? "var(--accent)" : "var(--t2)",
                     display: "flex", alignItems: "center",
+                    padding: "2px", borderRadius: "6px",
                     transition: "color 0.15s",
                     opacity: loading || uploading ? 0.4 : 1,
                   }}
-                  onMouseEnter={e => { if (!loading && !uploading) (e.currentTarget.style.color = "var(--t1)"); }}
-                  onMouseLeave={e => { (e.currentTarget.style.color = attachedFile ? "var(--accent)" : "var(--t3)"); }}
                 >
                   <Plus size={17} strokeWidth={1.75} />
-                </button>
+                </label>
                 <span style={{ fontSize: "11.5px", color: "var(--t3)", userSelect: "none" }}>
                   ⌘ Enter to send
                 </span>
