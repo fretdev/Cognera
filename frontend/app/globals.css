@@ -55,61 +55,36 @@
 
 /* ── LIGHT MODE ─────────────────────────────────────────────────────────── */
 [data-theme="light"] {
-  /*
-   * The golden rule of light mode:
-   * Background = warm paper. Surfaces = white. Depth = shadow.
-   *
-   * #FAFAF8  — warm off-white, never stark. Not grey, not white.
-   *            This is what sits behind everything.
-   * #FFFFFF  — pure white surfaces float above the background.
-   *            Cards, the sidebar, inputs — these sit on top.
-   * Borders  — near-invisible (0.07 opacity). Shadow does the depth work.
-   */
-
   --bg:  #FAFAF8;
   --s1:  #FFFFFF;
   --s2:  #F5F3F0;
   --s3:  #EDEBE7;
   --s4:  #E4E1DC;
 
-  /* Borders: very subtle — just enough to define edges, not enough to clutter */
   --b1:  rgba(0,0,0,0.06);
   --b2:  rgba(0,0,0,0.09);
   --b3:  rgba(0,0,0,0.13);
 
-  /*
-   * Text hierarchy — warm, not cool-grey.
-   * #1C1917  (warm near-black) — primary. Contrast ratio 17:1 on white.
-   * #4B4845  (warm dark grey) — secondary. Contrast ratio 7.5:1.
-   * #87847F  (warm mid grey) — tertiary. Contrast ratio 4.6:1. Just passes AA.
-   */
   --t1:  #1C1917;
   --t2:  #4B4845;
   --t3:  #87847F;
 
-  /* Accent — same orange, slightly richer on light for contrast */
   --accent:        #D96500;
   --accent-soft:   rgba(217,101,0,0.08);
   --accent-border: rgba(217,101,0,0.18);
   --accent-hover:  #C45C00;
 
-  /* Semantic */
   --green: #1A7F4B;
   --red:   #C92A2A;
 
-  /* Input — white, floating, shadow-defined */
   --input-bg:           #FFFFFF;
   --input-shadow:       0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.06);
   --input-shadow-focus: 0 0 0 1.5px rgba(217,101,0,0.35), 0 4px 20px rgba(217,101,0,0.08);
 
-  /* Sidebar: pure white with a gentle right-edge shadow */
   --sidebar-shadow: 1px 0 0 rgba(0,0,0,0.06), 4px 0 16px rgba(0,0,0,0.04);
-
-  /* Cards: subtle floating shadow */
   --card-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04);
 }
 
-/* ── Reset & base ───────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 
@@ -124,16 +99,14 @@ body {
   transition: background 0.2s, color 0.2s;
 }
 
-/* Slightly smaller on mobile so content fits without horizontal scroll */
 @media (max-width: 640px) {
   body { font-size: 14px; }
   .t-hero { font-size: clamp(2.2rem, 10vw, 3rem) !important; }
   .t-h1   { font-size: clamp(1.5rem, 7vw, 2rem) !important; }
   .chat-prose { font-size: 14px; }
-  .chat-input-wrap textarea { font-size: 16px; } /* prevents iOS zoom on focus */
+  .chat-input-wrap textarea { font-size: 16px; }
 }
 
-/* Dot grid — DARK mode only. Light mode gets clean paper. */
 [data-theme="dark"] body {
   background-image: radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px);
   background-size: 28px 28px;
@@ -142,10 +115,8 @@ body {
   background-image: none;
 }
 
-/* Sidebar, header, footer — never show the dot grid */
 aside, header, footer, nav { background-image: none !important; }
 
-/* Light mode sidebar — white background, shadow-defined right edge */
 [data-theme="light"] aside {
   background: var(--s1) !important;
   box-shadow: var(--sidebar-shadow) !important;
@@ -158,7 +129,6 @@ aside, header, footer, nav { background-image: none !important; }
 ::-webkit-scrollbar-thumb { background: var(--b3); border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* ── Typography ─────────────────────────────────────────────────────────── */
 .t-hero {
   font-family: var(--font-display, 'Plus Jakarta Sans', sans-serif);
   font-size: clamp(2.6rem, 6vw + 1rem, 5.2rem);
@@ -192,8 +162,6 @@ aside, header, footer, nav { background-image: none !important; }
   color: var(--t3);
 }
 
-/* ── Buttons ────────────────────────────────────────────────────────────── */
-/* Primary CTA — white fill in dark, warm dark fill in light */
 .btn-cta {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 10px 22px;
@@ -207,7 +175,6 @@ aside, header, footer, nav { background-image: none !important; }
 .btn-cta:hover   { opacity: 0.85; }
 .btn-cta:active  { transform: scale(0.97); }
 
-/* Ghost */
 .btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   padding: 9px 21px;
@@ -218,7 +185,6 @@ aside, header, footer, nav { background-image: none !important; }
 }
 .btn-ghost:hover { color: var(--t1); border-color: var(--b3); }
 
-/* App primary — flat, dark-surface */
 .btn-primary {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   padding: 7px 16px;
@@ -230,7 +196,6 @@ aside, header, footer, nav { background-image: none !important; }
 .btn-primary:hover:not(:disabled) { background: var(--s4); }
 .btn-primary:disabled { opacity: 0.38; cursor: not-allowed; }
 
-/* Icon button — orange send button, flat stop */
 .btn-icon {
   display: inline-flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; flex-shrink: 0;
@@ -246,13 +211,6 @@ aside, header, footer, nav { background-image: none !important; }
   border: 1px solid var(--b2);
 }
 
-/* ── Chat input ─────────────────────────────────────────────────────────── */
-/*
- * KEY DESIGN DECISION:
- * Dark mode: slightly lighter than the page, inner glow on focus.
- * Light mode: WHITE, elevated with a floating shadow. No border at rest.
- *             This is what ChatGPT and Gemini do — the input floats.
- */
 .chat-input-wrap {
   background: var(--input-bg);
   border-radius: 20px;
@@ -269,14 +227,13 @@ aside, header, footer, nav { background-image: none !important; }
   border: none; outline: none; resize: none;
   width: 100%;
   color: var(--t1);
-  font-size: 16px; /* 16px minimum prevents iOS Safari zoom on focus */
+  font-size: 16px;
   line-height: 1.65;
   font-family: var(--font-sans, sans-serif);
   max-height: 220px;
 }
 .chat-input-wrap textarea::placeholder { color: var(--t3); }
 
-/* ── Chat prose ─────────────────────────────────────────────────────────── */
 .chat-prose {
   font-size: 15px;
   line-height: 1.78;
@@ -315,7 +272,6 @@ aside, header, footer, nav { background-image: none !important; }
 .chat-prose th { background: var(--s2); font-weight: 500; }
 .chat-prose hr { border: none; border-top: 1px solid var(--b1); margin: 1em 0; }
 
-/* ── Stream cursor ──────────────────────────────────────────────────────── */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .stream-cursor::after {
   content: '▋';
@@ -324,14 +280,12 @@ aside, header, footer, nav { background-image: none !important; }
   margin-left: 1px; font-size: 0.9em;
 }
 
-/* ── Message animation ──────────────────────────────────────────────────── */
 @keyframes msgIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .msg-in { animation: msgIn 0.28s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
 
-/* ── Thinking dots ──────────────────────────────────────────────────────── */
 @keyframes dot-pulse {
   0%, 60%, 100% { opacity: 0.2; transform: scale(0.75); }
   30% { opacity: 1; transform: scale(1); }
@@ -344,7 +298,6 @@ aside, header, footer, nav { background-image: none !important; }
 .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
 
-/* ── Landing ────────────────────────────────────────────────────────────── */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(22px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -358,7 +311,6 @@ aside, header, footer, nav { background-image: none !important; }
 
 .section-rule { border: none; border-top: 1px solid var(--b1); margin: 0; }
 
-/* Feature cards — shadow in light mode, border in dark */
 .feature-card {
   background: var(--s1);
   border: 1px solid var(--b1);

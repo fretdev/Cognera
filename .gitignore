@@ -17,8 +17,12 @@ frontend/out/
 # Misc
 .DS_Store
 *.log
+.vscode/
+*.tsbuildinfo
 
 # Project notes (gitignored per project convention — NOTES.md holds dev
 # setup instructions; README.md is the public-facing project overview)
 NOTES.md
 ARCHITECTURE.md
+PROJECT_CONTEXT.md
+client_secret_66037752418-3kd7ufn9gluouno9pg6v67sqbjamb55m.apps.googleusercontent.com.json

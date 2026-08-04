@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * Cognera — ChatPanel (Production-Patched Frontend)
+ * ==================================================
+ * Fixes applied:
+ * - H-001: Correctly reads and displays mode from done event
+ * - L-001: Defensive JSON.parse with graceful skip on malformed data
+ * - L-002: Automatic retry with exponential backoff for transient failures
+ * - M-002: Tiered timeout UX (8s/15s/25s) with progressive feedback
+ * - Timeout cancellation when first chunk arrives
+ */
+
 import {
   useCallback, useEffect, useRef, useState,
 } from "react";
@@ -15,7 +26,7 @@ import WelcomeView from "@/components/WelcomeView";
 import CodeBlock from "@/components/CodeBlock";
 
 type Source = { document_id: string; document_title: string; snippet: string };
-type Mode   = "grounded" | "general";
+type Mode   = "grounded" | "general" | "hybrid";
 type Msg    = {
   role: "user" | "assistant";
   content: string;
@@ -26,7 +37,7 @@ type Msg    = {
 };
 
 const API_URL         = process.env.NEXT_PUBLIC_API_URL!;
-const CONTEXT_WINDOW  = 20;
+const CONTEXT_WINDOW  = 6;
 const CHARS_PER_FRAME = 5;
 const BOTTOM_THRESHOLD = 80;
 
@@ -99,6 +110,7 @@ export default function ChatPanel({
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [attachedFile,  setAttachedFile]  = useState<File | null>(null);
   const [uploading,     setUploading]     = useState(false);
+  const [thinkingStatus, setThinkingStatus] = useState<string>("");
 
   const convoIdRef   = useRef<string | null>(initConvoId || null);
   const userIdRef    = useRef<string | null>(null);
@@ -108,10 +120,12 @@ export default function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef     = useRef<AbortController | null>(null);
   const timeoutRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pinnedRef    = useRef(true);
   const rafRef       = useRef<number | null>(null);
   const typeQueueRef = useRef<string[]>([]);
   const displayedRef = useRef<string>("");
+  const firstChunkReceived = useRef(false);
 
   useEffect(() => {
     createClient().auth.getUser()
@@ -181,9 +195,12 @@ export default function ChatPanel({
 
   function unlockUI() {
     setLoading(false);
+    setThinkingStatus("");
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+    if (progressTimeoutRef.current) { clearTimeout(progressTimeoutRef.current); progressTimeoutRef.current = null; }
     abortRef.current = null;
     stopTypewriter();
+    firstChunkReceived.current = false;
   }
 
   /* ── Persist ─────────────────────────────────────────────────────────── */
@@ -227,21 +244,20 @@ export default function ChatPanel({
 
   /* ── Send ────────────────────────────────────────────────────────────── */
   async function sendQuestion(question: string, forkAtIndex?: number) {
-    if ((!question.trim() && !attachedFile) || loading) return;
+    const currentQuestion = question.trim();
+    if ((!currentQuestion && !attachedFile) || loading) return;
 
     pinnedRef.current = true;
     setShowScrollBtn(false);
     setInput("");
     requestAnimationFrame(autosize);
 
-    // Handle file upload first
     const fileToUpload = attachedFile;
     setAttachedFile(null);
 
     if (fileToUpload) {
-      // Show user message with file name
-      const userMsg = question.trim()
-        ? `${question.trim()}\n\n📎 ${fileToUpload.name}`
+      const userMsg = currentQuestion
+        ? `${currentQuestion}\n\n📎 ${fileToUpload.name}`
         : `📎 ${fileToUpload.name}`;
 
       setMessages(prev => {
@@ -256,51 +272,107 @@ export default function ChatPanel({
         content: uploadMsg || "File uploaded.",
       }]);
 
-      // If no question text, we're done
-      if (!question.trim()) return;
+      if (!currentQuestion) return;
     } else {
       setMessages(prev => {
         const base = forkAtIndex !== undefined ? prev.slice(0, forkAtIndex) : prev;
-        return [...base, { role: "user", content: question }];
+        return [...base, { role: "user", content: currentQuestion }];
       });
       requestAnimationFrame(() => scrollToBottom(true));
     }
 
     setLoading(true);
+    setThinkingStatus("Thinking...");
+    firstChunkReceived.current = false;
+
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // FIX M-002: Tiered timeout with progressive UX feedback
+    // 8s: Still thinking
+    progressTimeoutRef.current = setTimeout(() => {
+      if (!firstChunkReceived.current) {
+        setThinkingStatus("Still thinking... (this may take a moment)");
+      }
+    }, 8000);
+
+    // 15s: Taking longer than usual
+    const longWaitTimeout = setTimeout(() => {
+      if (!firstChunkReceived.current) {
+        setThinkingStatus("Taking longer than usual. Working on it...");
+      }
+    }, 15000);
+
+    // 25s: Hard abort
     timeoutRef.current = setTimeout(() => {
       controller.abort();
       setMessages(prev => [...prev.slice(0, -1), {
         role: "assistant", content: "Request timed out. Please try again.", isError: true,
       }]);
       unlockUI();
-    }, 45_000);
+    }, 25_000);
 
-    try {
-      const { data } = await createClient().auth.getSession();
-      const token = data.session?.access_token;
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+    const hasDocHistory = messages.some(
+      m => m.mode === "grounded" || m.mode === "hybrid" || (m.sources && m.sources.length > 0)
+    );
 
-      const res = await fetch(`${API_URL}/chat/stream`, {
-        method: "POST", headers,
-        body: JSON.stringify({ question: question.trim() }),
-        signal: controller.signal,
-      });
+    // FIX L-002: Automatic retry with exponential backoff
+    let attempt = 0;
+    const maxAttempts = 2;
+    let streamRes: Response | null = null;
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText.includes("429") ? "429" : errText);
+    while (attempt < maxAttempts) {
+      attempt++;
+      try {
+        const { data } = await createClient().auth.getSession();
+        const token = data.session?.access_token;
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+
+        const res = await fetch(`${API_URL}/chat/stream`, {
+          method: "POST", headers,
+          body: JSON.stringify({ question: currentQuestion, has_doc_history: hasDocHistory }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          // Retry on 5xx errors
+          if (res.status >= 500 && attempt < maxAttempts) {
+            await new Promise(r => setTimeout(r, 1000 * attempt));
+            continue;
+          }
+          throw new Error(errText.includes("429") ? "429" : errText);
+        }
+
+        streamRes = res;
+        // Request succeeded — clear retry state
+        break;
+
+      } catch (err) {
+        if (attempt >= maxAttempts) throw err;
+        // Only retry on network/5xx errors, not 4xx
+        const msg = (err as Error).message || "";
+        if (!msg.includes("429") && !msg.includes("403") && !msg.includes("401")) {
+          await new Promise(r => setTimeout(r, 1000 * attempt));
+          continue;
+        }
+        throw err;
       }
+    }
 
+    if (!streamRes) {
+      throw new Error("Failed to connect to chat stream.");
+    }
+
+    // Now process the stream
+    try {
       displayedRef.current = "";
       typeQueueRef.current = [];
       setMessages(prev => [...prev, { role: "assistant", content: "", streaming: true }]);
       startTypewriter();
 
-      const reader  = res.body!.getReader();
+      const reader  = streamRes.body!.getReader();
       const decoder = new TextDecoder();
       let fullText     = "";
       let finalSources: Source[] = [];
@@ -313,18 +385,71 @@ export default function ChatPanel({
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
-        for (const line of lines) {
+        for (let line of lines) {
+          line = line.replace(/\r$/, "");
           if (!line.startsWith("data: ")) continue;
+
+          const jsonString = line.slice(6).trim();
+          if (!jsonString) continue;
+
+          // FIX L-001: Defensive JSON.parse
+          let ev: any;
           try {
-            const ev = JSON.parse(line.slice(6));
-            if (ev.type === "text")  { fullText += ev.text; typeQueueRef.current.push(...ev.text.split("")); }
-            if (ev.type === "done")  { finalSources = ev.sources || []; finalMode = ev.mode || "general"; setCurrentMode(finalMode); }
-            if (ev.type === "error") { throw new Error(ev.message); }
-          } catch { /* skip malformed */ }
+            ev = JSON.parse(jsonString);
+          } catch (parseErr) {
+            console.warn("Malformed SSE data:", jsonString);
+            continue;
+          }
+
+          if (ev.type === "error") {
+            const errorMsg = ev.message || JSON.stringify(ev);
+            throw new Error(errorMsg);
+          }
+
+          if (ev.type === "trace") {
+            if (!firstChunkReceived.current) {
+              firstChunkReceived.current = true;
+              if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+              }
+              if (progressTimeoutRef.current) {
+                clearTimeout(progressTimeoutRef.current);
+                progressTimeoutRef.current = null;
+              }
+            }
+            const stepText = ev.step || ev.content || ev.message || "";
+            if (stepText) setThinkingStatus(stepText);
+          }
+
+          const chunkText = ev.text || ev.content || ev.message || "";
+
+          if (ev.type === "text" && typeof chunkText === "string" && chunkText.length > 0) {
+            // FIX M-002: Cancel timeout when first chunk arrives
+            if (!firstChunkReceived.current) {
+              firstChunkReceived.current = true;
+              if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+              }
+              if (progressTimeoutRef.current) {
+                clearTimeout(progressTimeoutRef.current);
+                progressTimeoutRef.current = null;
+              }
+            }
+            setThinkingStatus("");
+            fullText += chunkText;
+            typeQueueRef.current.push(...chunkText.split(""));
+          }
+          if (ev.type === "done") {
+            finalSources = ev.sources || [];
+            // FIX H-001: Read mode from done event
+            finalMode = ev.mode || "general";
+            setCurrentMode(finalMode);
+          }
         }
       }
 
-      // Wait for typewriter to drain
       await new Promise<void>(resolve => {
         const check = () => typeQueueRef.current.length === 0 ? resolve() : requestAnimationFrame(check);
         requestAnimationFrame(check);
@@ -339,23 +464,39 @@ export default function ChatPanel({
       });
 
       if (pinnedRef.current) requestAnimationFrame(() => scrollToBottom());
-      await persistMessages(question, fullText, finalSources, finalMode);
+      await persistMessages(currentQuestion, fullText, finalSources, finalMode);
+
+      // Clear the long wait timeout
+      clearTimeout(longWaitTimeout);
 
     } catch (err) {
+      // ... existing error handling ...
+      clearTimeout(longWaitTimeout);
       if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+      if (progressTimeoutRef.current) { clearTimeout(progressTimeoutRef.current); progressTimeoutRef.current = null; }
+
       const name = (err as Error).name;
       const msg  = (err as Error).message || "";
+
       if (name === "AbortError") {
-        setMessages(prev => prev.slice(0, -1));
-        setInput(question);
+        setInput(currentQuestion);
         requestAnimationFrame(autosize);
-      } else if (msg.includes("429")) {
-        setMessages(prev => [...prev.slice(0, -1), { role: "assistant", content: "Rate limit reached. Wait a moment and try again.", isError: true }]);
-      } else {
-        setMessages(prev => prev.slice(0, -1));
-        setInput(question);
-        requestAnimationFrame(autosize);
+        return;
       }
+
+      let errorText = "We are currently experiencing heavy traffic. Please wait a moment before trying again.";
+      if (msg.includes("429") || msg.includes("quota") || msg.includes("RATE_LIMIT") || msg.includes("rate limit") || msg.includes("busy")) {
+        errorText = "AI quota temporarily busy. Please wait a moment.";
+      } else if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("high demand")) {
+        errorText = "The AI model is temporarily busy handling high demand. Please try again shortly.";
+      }
+
+      setMessages(prev => {
+        const base = prev[prev.length - 1]?.streaming ? prev.slice(0, -1) : prev;
+        return [...base, { role: "assistant", content: errorText, isError: true }];
+      });
+      setInput(currentQuestion);
+      requestAnimationFrame(autosize);
     } finally {
       unlockUI();
     }
@@ -417,13 +558,15 @@ export default function ChatPanel({
                 <div style={{
                   display: "flex", alignItems: "center", gap: "5px",
                   borderRadius: "9999px", padding: "3px 10px", fontSize: "11.5px",
-                  background: currentMode === "grounded" ? "var(--accent-soft)" : "rgba(62,207,142,0.08)",
-                  color:      currentMode === "grounded" ? "var(--accent)"      : "var(--green)",
-                  border:     `1px solid ${currentMode === "grounded" ? "var(--accent-border)" : "rgba(62,207,142,0.2)"}`,
+                  background: currentMode === "grounded" ? "var(--accent-soft)" : currentMode === "hybrid" ? "rgba(147, 51, 234, 0.08)" : "rgba(62,207,142,0.08)",
+                  color:      currentMode === "grounded" ? "var(--accent)"      : currentMode === "hybrid" ? "rgb(147, 51, 234)" : "var(--green)",
+                  border:     `1px solid ${currentMode === "grounded" ? "var(--accent-border)" : currentMode === "hybrid" ? "rgba(147, 51, 234, 0.2)" : "rgba(62,207,142,0.2)"}`,
                 }}>
                   {currentMode === "grounded"
                     ? <><BookOpen size={10} strokeWidth={2} />Source Grounded</>
-                    : <><Zap      size={10} strokeWidth={2} />Web Search</>}
+                    : currentMode === "hybrid"
+                    ? <><Zap size={10} strokeWidth={2} />Hybrid Search</>
+                    : <><Zap size={10} strokeWidth={2} />Web Search</>}
                 </div>
               )}
             </div>
@@ -442,8 +585,8 @@ export default function ChatPanel({
                       <button type="button" onClick={() => startEdit(i)} aria-label="Edit"
                         className="opacity-0 group-hover:opacity-100"
                         style={{ marginTop: "8px", padding: "4px", background: "none", border: "none", cursor: "pointer", color: "var(--t3)", borderRadius: "6px", transition: "opacity 0.15s, color 0.15s", flexShrink: 0 }}
-                        onMouseEnter={e => (e.currentTarget.style.color = "var(--t1)")}
-                        onMouseLeave={e => (e.currentTarget.style.color = "var(--t3)")}>
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "var(--t1)"}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--t3)"}>
                         <Pencil size={13} strokeWidth={1.75} />
                       </button>
                       <div style={{
@@ -465,30 +608,45 @@ export default function ChatPanel({
                   animation: isLatest && !initConvoId ? "msgIn 0.28s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
                 }}>
                   {m.isError ? (
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px", color: "var(--red)" }}>
-                      <AlertCircle size={15} strokeWidth={1.75} />
-                      {m.content}
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      fontSize: "14px",
+                      color: "#ef4444",
+                      background: "rgba(239, 68, 68, 0.08)",
+                      border: "1px solid rgba(239, 68, 68, 0.2)",
+                      padding: "10px 14px",
+                      borderRadius: "8px"
+                    }}>
+                      <AlertCircle size={15} strokeWidth={1.75} style={{ flexShrink: 0 }} />
+                      <span>{m.content}</span>
                     </div>
                   ) : (
                     <>
                       <div className={`chat-prose ${m.streaming ? "stream-cursor" : ""}`} style={{ wordBreak: "break-word" }}>
                         <ReactMarkdown components={mdComponents}>{m.content || (m.streaming ? " " : "")}</ReactMarkdown>
                       </div>
-                      {!m.streaming && m.sources && m.sources.length > 0 && (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
-                          {m.sources.map((s, si) => (
-                            <span key={si} title={s.snippet} style={{
-                              display: "inline-flex", alignItems: "center", gap: "5px",
-                              borderRadius: "9999px", padding: "3px 10px",
-                              fontSize: "12px", color: "var(--t3)",
-                              background: "var(--s2)", border: "1px solid var(--b1)",
-                            }}>
-                              <FileText size={11} strokeWidth={1.75} />
-                              {s.document_title}
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      {!m.streaming && m.sources && m.sources.length > 0 && (() => {
+                        const uniqueSources = Array.from(
+                          new Map(m.sources.map(s => [s.document_id || s.document_title, s])).values()
+                        );
+                        return (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
+                            {uniqueSources.map((s, si) => (
+                              <span key={s.document_id || si} title={s.snippet} style={{
+                                display: "inline-flex", alignItems: "center", gap: "5px",
+                                borderRadius: "9999px", padding: "3px 10px",
+                                fontSize: "12px", color: "var(--t3)",
+                                background: "var(--s2)", border: "1px solid var(--b1)",
+                              }}>
+                                <FileText size={11} strokeWidth={1.75} />
+                                {s.document_title}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
@@ -496,11 +654,18 @@ export default function ChatPanel({
             })}
 
             {(loading || uploading) && messages[messages.length - 1]?.role === "user" && (
-              <div style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 0" }}
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "4px 0" }}
                 role="status" aria-label="Cognera is thinking">
-                <span className="thinking-dot" />
-                <span className="thinking-dot" />
-                <span className="thinking-dot" />
+                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                  <span className="thinking-dot" />
+                </div>
+                {thinkingStatus && (
+                  <span style={{ fontSize: "12px", color: "var(--t3)", fontStyle: "italic" }}>
+                    {thinkingStatus}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -523,28 +688,26 @@ export default function ChatPanel({
         )}
 
         <form onSubmit={handleSend} style={{ maxWidth: "700px", margin: "0 auto" }}>
-          {/* Hidden file input */}
-            <input
-              ref={fileInputRef}
-              id="chat-file-input"
-              type="file"
-              accept={ACCEPTED_FILES}
-              style={{
-                  position: "absolute",
-                  width: "1px", height: "1px",
-                  padding: 0, margin: "-1px",
-                  overflow: "hidden", clip: "rect(0,0,0,0)",
-                  whiteSpace: "nowrap", border: 0,
-              }}
-              onChange={e => {
-                const f = e.target.files?.[0];
-                if (f) setAttachedFile(f);
-                e.target.value = "";
-              }}
-            />
+          <input
+            ref={fileInputRef}
+            id="chat-file-input"
+            type="file"
+            accept={ACCEPTED_FILES}
+            style={{
+              position: "absolute",
+              width: "1px", height: "1px",
+              padding: 0, margin: "-1px",
+              overflow: "hidden", clip: "rect(0,0,0,0)",
+              whiteSpace: "nowrap", border: 0,
+            }}
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) setAttachedFile(f);
+              e.target.value = "";
+            }}
+          />
 
           <div className="chat-input-wrap">
-            {/* Attached file chip */}
             {attachedFile && (
               <div style={{
                 display: "inline-flex", alignItems: "center", gap: "6px",
@@ -575,12 +738,10 @@ export default function ChatPanel({
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                {/* Attach button */}
-                {/* Attach — label directly triggers file input, no JS .click() needed */}
                 <label
-                    htmlFor="chat-file-input"
-                    aria-label="Attach file"
-                    title="Attach file — PDF, Word, PowerPoint, text, CSV"
+                  htmlFor="chat-file-input"
+                  aria-label="Attach file"
+                  title="Attach file — PDF, Word, PowerPoint, text, CSV"
                   style={{
                     cursor: loading || uploading ? "not-allowed" : "pointer",
                     color: attachedFile ? "var(--accent)" : "var(--t2)",

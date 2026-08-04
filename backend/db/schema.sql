@@ -101,11 +101,24 @@ as $$
     limit match_count;
 $$;
 
+create table if not exists study_planner (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    title text not null,
+    description text,
+    category text not null default 'study_session',
+    target_timestamp timestamptz,
+    duration_minutes int not null default 30,
+    is_completed boolean not null default false,
+    created_at timestamptz not null default now()
+);
+
 alter table documents enable row level security;
 alter table document_chunks enable row level security;
 alter table flashcards enable row level security;
 alter table quiz_questions enable row level security;
 alter table study_sessions enable row level security;
+alter table study_planner enable row level security;
 
 create policy "Users manage their own documents" on documents
     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -120,6 +133,9 @@ create policy "Users manage their own quiz questions" on quiz_questions
     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "Users manage their own study sessions" on study_sessions
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users manage their own study planner items" on study_planner
     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Note: the backend connects with the service_role key, which bypasses RLS
