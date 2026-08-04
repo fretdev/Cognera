@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Script from "next/script";
@@ -11,6 +11,9 @@ import { ArrowLeft } from "lucide-react";
 export const dynamic = "force-dynamic";
 
 type Mode = "login" | "signup";
+
+const DEFAULT_GOOGLE_CLIENT_ID =
+  "66037752418-3kd7ufn9gluouno9pg6v67sqbjamb55m.apps.googleusercontent.com";
 
 declare global {
   interface Window {
@@ -27,7 +30,13 @@ declare global {
             notification?: (notification: {
               isNotDisplayed: () => boolean;
               getNotDisplayedReason: () => string;
+              isSkippedMoment: () => boolean;
+              isDismissedMoment: () => boolean;
             }) => void
+          ) => void;
+          renderButton: (
+            parent: HTMLElement,
+            options: Record<string, unknown>
           ) => void;
         };
       };
@@ -68,6 +77,7 @@ function LoginFormContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = createClient();
+  const gisContainerRef = useRef<HTMLDivElement>(null);
 
   const [mode, setMode] = useState<Mode>("login");
   const [visible, setVisible] = useState(true);
@@ -79,7 +89,8 @@ function LoginFormContent() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
 
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const googleClientId =
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || DEFAULT_GOOGLE_CLIENT_ID;
 
   useEffect(() => {
     const urlError = searchParams?.get("error");
@@ -117,6 +128,15 @@ function LoginFormContent() {
             }
           },
         });
+
+        if (gisContainerRef.current) {
+          window.google.accounts.id.renderButton(gisContainerRef.current, {
+            type: "standard",
+            theme: "outline",
+            size: "large",
+            width: 320,
+          });
+        }
       } catch (err) {
         console.warn("Google Identity Services init warning:", err);
       }
@@ -139,11 +159,24 @@ function LoginFormContent() {
     setInfo(null);
     setGoogleLoading(true);
 
-    if (googleClientId && window.google?.accounts?.id) {
+    if (window.google?.accounts?.id && googleClientId) {
       try {
+        // Try triggering GIS render button click if mounted
+        const hiddenBtn = gisContainerRef.current?.querySelector(
+          "div[role=button], iframe"
+        ) as HTMLElement | null;
+
+        if (hiddenBtn) {
+          hiddenBtn.click();
+          setGoogleLoading(false);
+          return;
+        }
+
         window.google.accounts.id.prompt((notification) => {
-          if (notification.isNotDisplayed()) {
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
             fallbackOAuthSignIn();
+          } else {
+            setGoogleLoading(false);
           }
         });
       } catch {
@@ -212,6 +245,9 @@ function LoginFormContent() {
         src="https://accounts.google.com/gsi/client"
         onLoad={() => setGisLoaded(true)}
       />
+
+      {/* Hidden GIS render target */}
+      <div ref={gisContainerRef} className="hidden" aria-hidden="true" />
 
       {/* Top Header / Back Link Container */}
       <div className="w-full max-w-sm sm:max-w-[390px] mx-auto flex items-center justify-between">
