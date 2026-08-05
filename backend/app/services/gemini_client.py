@@ -85,11 +85,11 @@ def _call_with_retry_sync(fn, retries: int = 4, base_delay: float = 2.0):
                 "quota" in str(e).lower()
             )
 
-            if is_retryable and attempt < retries:
+            if is_retryable and attempt < 1:
                 rotate_api_key()
-                retry_delay = base_delay * (attempt + 1)
+                retry_delay = 1.0
                 logger.warning(
-                    f"Sync API error {status_code}, rotated key, retrying in {retry_delay:.1f}s (attempt {attempt + 1}/{retries})")
+                    f"Sync API error {status_code}, rotated key, retrying in {retry_delay:.1f}s (attempt {attempt + 1})")
                 time.sleep(retry_delay)
                 continue
 
