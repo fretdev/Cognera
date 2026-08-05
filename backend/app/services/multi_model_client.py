@@ -205,12 +205,10 @@ def generate_multi_provider_json(prompt: str) -> str:
     from app.services.gemini_client import generate_json
     from fastapi import HTTPException
 
-    try:
-        return generate_json(prompt)
-    except Exception as e:
-        logger.warning(f"Gemini generate_json failed ({e}), trying Groq/DeepSeek fallbacks...")
-
     has_groq = bool(settings.groq_api_key.strip())
+    has_openrouter = bool(settings.openrouter_api_key.strip())
+
+    # If Groq key is present, try Groq FIRST for instant sub-second JSON generation!
     if has_groq:
         try:
             import httpx
@@ -224,7 +222,7 @@ def generate_multi_provider_json(prompt: str) -> str:
                 "temperature": 0.2,
                 "response_format": {"type": "json_object"},
             }
-            with httpx.Client(timeout=35.0) as client:
+            with httpx.Client(timeout=25.0) as client:
                 resp = client.post(GROQ_URL, headers=headers, json=payload)
                 if resp.status_code == 200:
                     content = resp.json()["choices"][0]["message"]["content"].strip()
@@ -234,9 +232,13 @@ def generate_multi_provider_json(prompt: str) -> str:
                             content = content[4:]
                     return content.strip()
         except Exception as e:
-            logger.warning(f"Groq JSON fallback failed: {e}")
+            logger.warning(f"Groq JSON generation failed: {e}")
 
-    has_openrouter = bool(settings.openrouter_api_key.strip())
+    try:
+        return generate_json(prompt)
+    except Exception as e:
+        logger.warning(f"Gemini generate_json failed ({e}), trying DeepSeek fallback...")
+
     if has_openrouter:
         try:
             import httpx
@@ -249,7 +251,7 @@ def generate_multi_provider_json(prompt: str) -> str:
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
             }
-            with httpx.Client(timeout=35.0) as client:
+            with httpx.Client(timeout=25.0) as client:
                 resp = client.post(OPENROUTER_URL, headers=headers, json=payload)
                 if resp.status_code == 200:
                     content = resp.json()["choices"][0]["message"]["content"].strip()
