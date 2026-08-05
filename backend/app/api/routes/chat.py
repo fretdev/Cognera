@@ -404,6 +404,9 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
         trace: list[dict] = []
 
         try:
+            # Send an immediate heartbeat so the frontend timeout never fires while we work
+            yield f"data: {json.dumps({'type': 'trace', 'step': 'Connecting…'})}\n\n"
+
             doc_count = await asyncio.to_thread(_count_user_documents, user.id)
 
             disambig = _check_smart_disambiguation(req.question, user.id, doc_count)

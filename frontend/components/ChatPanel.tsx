@@ -316,14 +316,14 @@ export default function ChatPanel({
       }
     }, 6000);
 
-    // 45s hard abort
+    // 90s hard abort (gives time for web search pre-retrieval + Groq/DeepSeek generation)
     timeoutRef.current = setTimeout(() => {
       controller.abort();
       setMessages(prev => [...prev.slice(0, -1), {
         role: "assistant", content: "Request timed out. Please try asking again.", isError: true,
       }]);
       unlockUI();
-    }, 45_000);
+    }, 90_000);
 
     const historyPayload = messages.slice(-10).map(m => ({
       role: m.role,
@@ -426,10 +426,11 @@ export default function ChatPanel({
           }
 
           if (ev.type === "trace") {
+            // Clear timeout on ANY trace event — each step proves the stream is alive
+            if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+            if (progressTimeoutRef.current) { clearTimeout(progressTimeoutRef.current); progressTimeoutRef.current = null; }
             if (!firstChunkReceived.current) {
               firstChunkReceived.current = true;
-              if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-              if (progressTimeoutRef.current) { clearTimeout(progressTimeoutRef.current); progressTimeoutRef.current = null; }
             }
             const stepText = ev.step || ev.content || ev.message || "";
             if (stepText) setThinkingStatus(stepText);
