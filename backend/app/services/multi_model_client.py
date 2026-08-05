@@ -158,6 +158,12 @@ async def stream_multi_provider_text(
     has_openrouter = bool(get_openrouter_key())
     has_groq = bool(get_groq_key())
 
+    # -----------------------------------------------------------------------
+    # PROVIDER ORDER: Groq first (500t/s, no quota issues), DeepSeek second,
+    # Gemini last (has strict 15 RPM free tier quota).
+    # tools=None is always passed so providers never simulate tool calls.
+    # -----------------------------------------------------------------------
+
     # Explicit Model Direct Routing
     if preferred_model == "deepseek" and has_openrouter:
         try:
@@ -168,20 +174,38 @@ async def stream_multi_provider_text(
         except Exception as e:
             logger.warning(f"DeepSeek direct call failed ({e}), falling back to auto cascade…")
 
-    if preferred_model == "groq" and has_groq:
+    if preferred_model == "gemini":
+        # explicit gemini routing - skip Groq-first below
+        pass
+    elif has_groq:
+        # ALWAYS try Groq first in auto mode — it's 500t/s and has no tool-call simulation issues
         try:
-            yield {"type": "trace", "step": "Running Qwen 2.5 72B (Groq 500t/s)…"}
-            async for chunk in stream_groq_qwen(messages, "qwen-2.5-72b-instruct"):
+            yield {"type": "trace", "step": "Thinking (Groq 500t/s)…"}
+            async for chunk in stream_groq_qwen(messages, "llama-3.3-70b-versatile"):
                 yield chunk
             return
         except Exception as e:
-            logger.warning(f"Groq direct call failed ({e}), falling back to auto cascade…")
+            logger.warning(f"Groq primary call failed ({e}), falling back…")
 
-    # Auto Model Cascade Mode
+    if preferred_model == "groq" and has_groq:
+        # already tried above, fall through
+        pass
+
+    # DeepSeek second
+    if has_openrouter:
+        try:
+            yield {"type": "trace", "step": "Thinking (DeepSeek V3)…"}
+            async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
+                yield chunk
+            return
+        except Exception as e:
+            logger.warning(f"DeepSeek second-choice call failed ({e}), falling back to Gemini…")
+
+    # Gemini last resort (has strict free-tier quota)
     for cascade_attempt in range(3):
         gemini_hit_429 = False
         try:
-            async for chunk in gemini_generate_stream(messages, tools=tools, execute_tool=execute_tool):
+            async for chunk in gemini_generate_stream(messages, tools=None, execute_tool=None):
                 if chunk.get("type") == "error" and chunk.get("code") == "RATE_LIMIT":
                     gemini_hit_429 = True
                     break
@@ -189,37 +213,18 @@ async def stream_multi_provider_text(
             if not gemini_hit_429:
                 return
         except Exception as e:
-            logger.warning(f"Gemini stream exception ({e}), triggering provider failover…")
+            logger.warning(f"Gemini stream exception ({e})")
             gemini_hit_429 = True
 
-        if gemini_hit_429:
-            if has_groq:
-                try:
-                    yield {"type": "trace", "step": "Gemini busy. Switching to Groq (500t/s)…"}
-                    async for chunk in stream_groq_qwen(messages, "llama-3.3-70b-versatile"):
-                        yield chunk
-                    return
-                except Exception as e:
-                    logger.warning(f"Groq failover failed: {e}")
-
-            if has_openrouter:
-                try:
-                    yield {"type": "trace", "step": "Switching to DeepSeek V3…"}
-                    async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
-                        yield chunk
-                    return
-                except Exception as e:
-                    logger.warning(f"DeepSeek failover failed: {e}")
-
-            if cascade_attempt < 2:
-                yield {"type": "trace", "step": f"AI capacity busy. Rotating key & retrying ({cascade_attempt + 1}/2)…"}
-                rotate_api_key()
-                await asyncio.sleep(2.0)
-                continue
+        if gemini_hit_429 and cascade_attempt < 2:
+            yield {"type": "trace", "step": f"AI capacity busy. Rotating key & retrying ({cascade_attempt + 1}/2)…"}
+            rotate_api_key()
+            await asyncio.sleep(2.0)
+            continue
 
     yield {
         "type": "error",
-        "message": "AI quota is temporarily busy. Please wait a few seconds and try again.",
+        "message": "AI is at capacity. Please wait a moment and try again.",
         "code": "RATE_LIMIT",
     }
 
