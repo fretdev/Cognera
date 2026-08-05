@@ -526,6 +526,32 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                     )
                     trace.append({"tool": "tool_search_documents", "status": "done", "summary": f"Retrieved {len(chunks)} document section(s)."})
 
+            should_search_web = (
+                req.scope_mode == "web_only" or
+                _is_obviously_web_query(req.question)
+            )
+
+            if should_search_web:
+                yield f"data: {json.dumps({'type': 'trace', 'step': 'Searching the web…'})}\n\n"
+                web_res = await tool_search_web(query=req.question, num_results=5)
+                items = web_res.get("results", [])
+                if items:
+                    mode_used = "general"
+                    web_context_blocks = []
+                    for w in items:
+                        title = w.get("title", "Web Page")
+                        uri = w.get("uri", "")
+                        snippet = w.get("snippet", "")
+                        web_context_blocks.append(f"Source: {title} ({uri})\n{snippet}")
+
+                    web_context_text = "\n\n---\n\n".join(web_context_blocks)
+                    system += (
+                        f"\n\n## REAL-TIME WEB SEARCH RESULTS FOR THIS QUESTION:\n"
+                        f"{web_context_text}\n\n"
+                        f"Answer the user's question accurately using the live web search results above. Provide markdown links [Title](URL) for sources when appropriate."
+                    )
+                    trace.append({"tool": "tool_search_web", "status": "done", "summary": f"Found {len(items)} web result(s)."})
+
             if doc_count == 0:
                 tools = _tools_for_scope("web_only")
                 mode_used = "general"

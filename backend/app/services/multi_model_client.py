@@ -178,43 +178,50 @@ async def stream_multi_provider_text(
             logger.warning(f"Groq direct call failed ({e}), falling back to auto cascade…")
 
     # Auto Model Cascade Mode
-    gemini_hit_429 = False
-    try:
-        async for chunk in gemini_generate_stream(messages, tools=tools, execute_tool=execute_tool):
-            if chunk.get("type") == "error" and chunk.get("code") == "RATE_LIMIT":
-                gemini_hit_429 = True
-                break
-            yield chunk
-        if not gemini_hit_429:
-            return
-    except Exception as e:
-        logger.warning(f"Gemini stream exception ({e}), triggering provider failover…")
-        gemini_hit_429 = True
-
-    if gemini_hit_429:
-        if has_groq:
-            try:
-                yield {"type": "trace", "step": "Gemini busy. Switching to Groq (500t/s)…"}
-                async for chunk in stream_groq_qwen(messages, "llama-3.3-70b-versatile"):
-                    yield chunk
+    for cascade_attempt in range(3):
+        gemini_hit_429 = False
+        try:
+            async for chunk in gemini_generate_stream(messages, tools=tools, execute_tool=execute_tool):
+                if chunk.get("type") == "error" and chunk.get("code") == "RATE_LIMIT":
+                    gemini_hit_429 = True
+                    break
+                yield chunk
+            if not gemini_hit_429:
                 return
-            except Exception as e:
-                logger.warning(f"Groq failover failed: {e}")
+        except Exception as e:
+            logger.warning(f"Gemini stream exception ({e}), triggering provider failover…")
+            gemini_hit_429 = True
 
-        if has_openrouter:
-            try:
-                yield {"type": "trace", "step": "Switching to DeepSeek V3…"}
-                async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
-                    yield chunk
-                return
-            except Exception as e:
-                logger.warning(f"DeepSeek failover failed: {e}")
+        if gemini_hit_429:
+            if has_groq:
+                try:
+                    yield {"type": "trace", "step": "Gemini busy. Switching to Groq (500t/s)…"}
+                    async for chunk in stream_groq_qwen(messages, "llama-3.3-70b-versatile"):
+                        yield chunk
+                    return
+                except Exception as e:
+                    logger.warning(f"Groq failover failed: {e}")
 
-        yield {
-            "type": "error",
-            "message": "AI quota is temporarily busy. Please wait a few seconds and try again.",
-            "code": "RATE_LIMIT",
-        }
+            if has_openrouter:
+                try:
+                    yield {"type": "trace", "step": "Switching to DeepSeek V3…"}
+                    async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
+                        yield chunk
+                    return
+                except Exception as e:
+                    logger.warning(f"DeepSeek failover failed: {e}")
+
+            if cascade_attempt < 2:
+                yield {"type": "trace", "step": f"AI capacity busy. Rotating key & retrying ({cascade_attempt + 1}/2)…"}
+                rotate_api_key()
+                await asyncio.sleep(2.0)
+                continue
+
+    yield {
+        "type": "error",
+        "message": "AI quota is temporarily busy. Please wait a few seconds and try again.",
+        "code": "RATE_LIMIT",
+    }
 
 
 def generate_multi_provider_json(prompt: str) -> str:
