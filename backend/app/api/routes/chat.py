@@ -466,6 +466,45 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
 
             system = SYSTEM_PROMPT + (NO_DOCS_NUDGE if doc_count == 0 else "")
 
+            should_search_docs = (
+                doc_count > 0 and (
+                    req.scope_document_ids is not None or
+                    req.scope_mode == "documents_only" or
+                    _is_document_signal_query(req.question)
+                )
+            )
+
+            if should_search_docs:
+                yield f"data: {json.dumps({'type': 'trace', 'step': 'Searching study notes…'})}\n\n"
+                doc_res = await tool_search_documents(
+                    query=req.question,
+                    user_id=user.id,
+                    match_count=CONTEXT_CHUNKS,
+                    scope_document_ids=req.scope_document_ids,
+                )
+                chunks = doc_res.get("chunks", [])
+                if chunks:
+                    mode_used = "grounded"
+                    doc_context_blocks = []
+                    for c in chunks:
+                        doc_id = c["document_id"]
+                        doc_title = c.get("document_title") or "Document"
+                        if not any(s["document_id"] == doc_id for s in sources):
+                            sources.append({
+                                "document_id": doc_id,
+                                "document_title": doc_title,
+                                "snippet": c.get("content", "")[:200],
+                            })
+                        doc_context_blocks.append(f"Source: {doc_title}\n{c.get('content', '')}")
+
+                    doc_context_text = "\n\n---\n\n".join(doc_context_blocks)
+                    system += (
+                        f"\n\n## RETRIEVED DOCUMENT CONTEXT FOR THIS USER QUESTION:\n"
+                        f"{doc_context_text}\n\n"
+                        f"Answer the student's question accurately using the document context above. Cite source titles when relevant."
+                    )
+                    trace.append({"tool": "tool_search_documents", "status": "done", "summary": f"Retrieved {len(chunks)} document section(s)."})
+
             if doc_count == 0:
                 tools = _tools_for_scope("web_only")
                 mode_used = "general"
