@@ -49,9 +49,20 @@ class ToolCallResult:
     model_content: Any | None = None
 
 
-@lru_cache
+_api_key_index = 0
+
 def get_gemini_client() -> genai.Client:
-    return genai.Client(api_key=settings.gemini_api_key)
+    global _api_key_index
+    keys = [k.strip() for k in settings.gemini_api_keys.split(",") if k.strip()]
+    if not keys:
+        keys = [settings.gemini_api_key]
+    key = keys[_api_key_index % len(keys)]
+    return genai.Client(api_key=key)
+
+def rotate_api_key():
+    global _api_key_index
+    _api_key_index += 1
+    logger.info("Rotated to next Gemini API key in key pool.")
 
 
 # ---------------------------------------------------------------------------
@@ -369,38 +380,35 @@ async def generate_stream(messages, tools=None, execute_tool=None):
     yield {"type": "trace", "step": "Connecting to AI model..."}
 
     async def _get_stream(contents, tools_config, system_instruction=None):
+        fallback_models = ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.0-flash"]
         last_error = None
-        for attempt in range(4):
-            try:
-                def _create_stream():
-                    return client.models.generate_content_stream(
-                        model=settings.gemini_chat_model,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_instruction,
-                            tools=tools_config
-                        ) if (tools_config or system_instruction) else None
-                    )
-                return await loop.run_in_executor(_STREAM_EXECUTOR, _create_stream)
-            except (ServerError, ClientError) as e:
-                last_error = e
-                status_code = getattr(e, 'code', None) or getattr(
-                    e, 'status_code', None)
-                if (isinstance(e, ServerError) or status_code == 429) and attempt < 3:
-                    retry_delay = 2.0 * (attempt + 1)
-                    try:
-                        if hasattr(e, 'details') and e.details:
-                            for detail in e.details:
-                                if hasattr(detail, 'retry_delay'):
-                                    retry_delay = detail.retry_delay.seconds + detail.retry_delay.nanos / 1e9
-                                    break
-                    except Exception:
-                        pass
-                    logger.warning(
-                        f"Stream creation error {status_code}, retrying in {retry_delay:.1f}s")
-                    await asyncio.sleep(retry_delay)
-                    continue
-                raise last_error
+
+        for model_name in fallback_models:
+            for attempt in range(2):
+                try:
+                    active_client = get_gemini_client()
+                    def _create_stream(target_model=model_name, c=active_client):
+                        return c.models.generate_content_stream(
+                            model=target_model,
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=system_instruction,
+                                tools=tools_config
+                            ) if (tools_config or system_instruction) else None
+                        )
+                    return await loop.run_in_executor(_STREAM_EXECUTOR, _create_stream)
+                except (ServerError, ClientError) as e:
+                    last_error = e
+                    status_code = getattr(e, 'code', None) or getattr(e, 'status_code', None)
+                    if status_code == 429 or "quota" in str(e).lower():
+                        logger.warning(f"Model {model_name} rate limited ({status_code}), rotating API key and failing over…")
+                        rotate_api_key()
+                        await asyncio.sleep(0.5)
+                        break  # Switch to next fallback model immediately!
+                    if isinstance(e, ServerError) and attempt < 1:
+                        await asyncio.sleep(1.0)
+                        continue
+                    raise last_error
         raise last_error
 
     sdk_contents, system_instruction = _messages_to_contents(messages)
@@ -411,6 +419,9 @@ async def generate_stream(messages, tools=None, execute_tool=None):
             return next(stream_iterator), False
         except StopIteration:
             return None, True
+
+    rate_limit_attempts = 0
+    MAX_429_RETRIES = 3
 
     for turn in range(MAX_TOOL_TURNS):
         tool_calls = []
@@ -423,12 +434,23 @@ async def generate_stream(messages, tools=None, execute_tool=None):
                 chunk, is_done = await loop.run_in_executor(_STREAM_EXECUTOR, _get_next_chunk, stream_iterator)
             except (ServerError, ClientError) as e:
                 status_code = getattr(e, 'code', None) or getattr(e, 'status_code', None)
-                if status_code == 429:
-                    yield {"type": "trace", "step": "Rate limited. Retrying..."}
-                    await asyncio.sleep(3.0)
-                    response_stream = await _get_stream(sdk_contents, tools, system_instruction)
-                    stream_iterator = iter(response_stream)
-                    continue
+                if status_code == 429 or "quota" in str(e).lower():
+                    rate_limit_attempts += 1
+                    if rate_limit_attempts <= MAX_429_RETRIES:
+                        yield {"type": "trace", "step": f"AI capacity busy. Retrying ({rate_limit_attempts}/{MAX_429_RETRIES})…"}
+                        await asyncio.sleep(2.5 * rate_limit_attempts)
+                        try:
+                            response_stream = await _get_stream(sdk_contents, tools, system_instruction)
+                            stream_iterator = iter(response_stream)
+                            continue
+                        except Exception:
+                            pass
+                    yield {
+                        "type": "error",
+                        "message": "AI quota is temporarily busy. Please wait a few seconds and try again.",
+                        "code": "RATE_LIMIT",
+                    }
+                    return
                 raise
 
             if is_done:
