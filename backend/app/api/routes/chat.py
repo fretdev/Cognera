@@ -222,13 +222,24 @@ async def tool_search_documents(
             if not relevant:
                 direct_res = call_supabase(lambda: get_supabase()
                                            .table("document_chunks")
-                                           .select("id, document_id, content, chunk_index, document_title")
+                                           .select("id, document_id, content, chunk_index, documents(title)")
                                            .in_("document_id", scope_document_ids)
                                            .eq("user_id", user_id)
                                            .order("chunk_index", desc=False)
                                            .limit(match_count)
                                            .execute())
-                relevant = direct_res.data or []
+                if direct_res.data:
+                    relevant = []
+                    for c in direct_res.data:
+                        d_info = c.get("documents")
+                        doc_title = d_info.get("title") if isinstance(d_info, dict) else "Document"
+                        relevant.append({
+                            "id": c["id"],
+                            "document_id": c["document_id"],
+                            "content": c["content"],
+                            "chunk_index": c["chunk_index"],
+                            "document_title": doc_title,
+                        })
         else:
             relevant = [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
             if not relevant and chunks:
