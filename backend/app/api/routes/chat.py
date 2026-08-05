@@ -206,30 +206,41 @@ async def tool_search_documents(
     scope_document_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     def _run() -> list[dict]:
-        embedding = embed_text(query)
-        result = call_supabase(lambda: get_supabase().rpc(
-            "match_document_chunks",
-            {
-                "query_embedding": embedding,
-                "match_user_id": user_id,
-                "match_count": match_count * 3 if scope_document_ids else match_count,
-            },
-        ).execute())
-        chunks = result.data or []
+        chunks = []
+        try:
+            embedding = embed_text(query)
+            result = call_supabase(lambda: get_supabase().rpc(
+                "match_document_chunks",
+                {
+                    "query_embedding": embedding,
+                    "match_user_id": user_id,
+                    "match_count": match_count * 3 if scope_document_ids else match_count,
+                },
+            ).execute())
+            chunks = result.data or []
+        except Exception as rpc_err:
+            logger.warning(f"match_document_chunks RPC error ({rpc_err}), falling back to direct table query...")
+
+        relevant = []
         if scope_document_ids:
             relevant = [c for c in chunks if c.get("document_id") in scope_document_ids]
-            # Fallback if vector similarity threshold filtered everything out for broad prompts
+
+        if not relevant and chunks:
+            relevant = [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
             if not relevant:
-                direct_res = call_supabase(lambda: get_supabase()
-                                           .table("document_chunks")
-                                           .select("id, document_id, content, chunk_index, documents(title)")
-                                           .in_("document_id", scope_document_ids)
-                                           .eq("user_id", user_id)
-                                           .order("chunk_index", desc=False)
-                                           .limit(match_count)
-                                           .execute())
+                relevant = chunks[:match_count]
+
+        # If RPC failed or returned 0 chunks, fetch document chunks directly from table
+        if not relevant:
+            try:
+                def _query_table():
+                    q = get_supabase().table("document_chunks").select("id, document_id, content, chunk_index, documents(title)").eq("user_id", user_id)
+                    if scope_document_ids:
+                        q = q.in_("document_id", scope_document_ids)
+                    return q.order("chunk_index", desc=False).limit(match_count).execute()
+
+                direct_res = call_supabase(_query_table)
                 if direct_res.data:
-                    relevant = []
                     for c in direct_res.data:
                         d_info = c.get("documents")
                         doc_title = d_info.get("title") if isinstance(d_info, dict) else "Document"
@@ -240,10 +251,9 @@ async def tool_search_documents(
                             "chunk_index": c["chunk_index"],
                             "document_title": doc_title,
                         })
-        else:
-            relevant = [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
-            if not relevant and chunks:
-                relevant = chunks[:match_count]
+            except Exception as direct_err:
+                logger.warning(f"Direct document_chunks table query error: {direct_err}")
+
         return relevant[:match_count]
 
     relevant = await asyncio.to_thread(_run)
