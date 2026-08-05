@@ -520,9 +520,16 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                     mode_used = "general"
 
                     from app.services.gemini_client import async_stream_text
+                    from app.services.multi_model_client import stream_groq_qwen
                     fallback_prompt = f"{system}\n\nThe user's question: {req.question}\n\nWeb search results: {json.dumps(web_result['results'][:3])}\n\nProvide a helpful answer based on these web results."
-                    async for chunk in async_stream_text(fallback_prompt):
-                        yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+                    try:
+                        async for chunk in async_stream_text(fallback_prompt):
+                            yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+                    except Exception as web_stream_err:
+                        logger.warning(f"Gemini web stream failed ({web_stream_err}), using Groq fallback...")
+                        async for chunk in stream_groq_qwen([{"role": "user", "content": fallback_prompt}], "llama-3.3-70b-versatile"):
+                            if chunk.get("type") == "text":
+                                yield f"data: {json.dumps({'type': 'text', 'content': chunk['content']})}\n\n"
                 else:
                     no_match_text = (
                         "I searched your uploaded study materials, but couldn't find information regarding this question. "
