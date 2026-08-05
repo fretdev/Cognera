@@ -436,8 +436,8 @@ export default function PlannerPanel() {
         >
           <div className="flex items-center justify-between text-[var(--t3)]">
             <span className="text-xs font-medium">Exams Ahead</span>
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--accent-soft)] border border-[var(--accent-border)]">
-              <Flame size={13} strokeWidth={1.75} className="text-[var(--accent)]" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[rgba(241,115,0,0.12)] border border-[rgba(241,115,0,0.25)]">
+              <Flame size={13} strokeWidth={1.75} className="text-[#F17300]" />
             </div>
           </div>
           <div className="mt-1 text-lg font-semibold text-[var(--t1)] sm:text-xl">{stats.exams}</div>
@@ -449,8 +449,8 @@ export default function PlannerPanel() {
         >
           <div className="flex items-center justify-between text-[var(--t3)]">
             <span className="text-xs font-medium">Sessions</span>
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--s2)] border border-[var(--b2)]">
-              <Clock size={13} strokeWidth={1.75} className="text-[var(--t2)]" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[rgba(16,185,129,0.12)] border border-[rgba(16,185,129,0.25)]">
+              <Clock size={13} strokeWidth={1.75} className="text-[#34D399]" />
             </div>
           </div>
           <div className="mt-1 text-lg font-semibold text-[var(--t1)] sm:text-xl">{stats.studyBlocks}</div>
@@ -462,8 +462,8 @@ export default function PlannerPanel() {
         >
           <div className="flex items-center justify-between text-[var(--t3)]">
             <span className="text-xs font-medium">Completed</span>
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--s2)] border border-[var(--b2)]">
-              <CheckCircle2 size={13} strokeWidth={1.75} className="text-[var(--t2)]" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[rgba(99,102,241,0.12)] border border-[rgba(99,102,241,0.25)]">
+              <CheckCircle2 size={13} strokeWidth={1.75} className="text-[#818CF8]" />
             </div>
           </div>
           <div className="mt-1 text-lg font-semibold text-[var(--t1)] sm:text-xl">{stats.completed}</div>
@@ -483,17 +483,17 @@ export default function PlannerPanel() {
               return (
                 <div
                   key={exam.id}
-                  className="rounded-2xl p-4 flex flex-col justify-between transition-all hover:border-[var(--accent-border)]"
+                  className="rounded-2xl p-4 flex flex-col justify-between transition-all hover:border-[var(--b2)]"
                   style={{
                     background: "var(--s1)",
-                    border: "1px solid var(--accent-border)",
+                    border: "1px solid var(--b1)",
                     boxShadow: "var(--card-shadow)",
                   }}
                 >
                   <div className="flex items-start justify-between">
                     <div className="min-w-0 pr-2">
-                      <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)] border border-[var(--accent-border)] uppercase tracking-wider">
-                        <Flame size={10} className="text-[var(--accent)]" /> Exam
+                      <span className="inline-flex items-center gap-1 rounded-md bg-[rgba(241,115,0,0.10)] px-2 py-0.5 text-[10px] font-semibold text-[#F17300] border border-[rgba(241,115,0,0.20)] uppercase tracking-wider">
+                        <Flame size={10} className="text-[#F17300]" /> Exam
                       </span>
                       <h3 className="mt-1.5 text-sm font-medium text-[var(--t1)] truncate">
                         {exam.title}
@@ -503,7 +503,7 @@ export default function PlannerPanel() {
                     <button
                       type="button"
                       onClick={() => handleToggleComplete(exam)}
-                      className="text-xs font-medium text-[var(--accent)] hover:opacity-80 shrink-0"
+                      className="text-xs font-medium text-[var(--t2)] hover:text-[#F17300] shrink-0 transition-colors"
                     >
                       Done
                     </button>
@@ -523,7 +523,7 @@ export default function PlannerPanel() {
                       <div className="text-[9px] text-[var(--t3)] uppercase">Mins</div>
                     </div>
                     <div className="rounded-xl bg-[var(--s2)] py-1.5 border border-[var(--b1)]">
-                      <div className="text-sm font-semibold text-[var(--accent)] sm:text-base">{cd.seconds}</div>
+                      <div className="text-sm font-semibold text-[#F17300] sm:text-base">{cd.seconds}</div>
                       <div className="text-[9px] text-[var(--t3)] uppercase">Secs</div>
                     </div>
                   </div>
@@ -763,13 +763,15 @@ export default function PlannerPanel() {
                           <span
                             className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
                               isExam
-                                ? "bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent-border)]"
-                                : "bg-[var(--s3)] text-[var(--t2)] border border-[var(--b2)]"
+                                ? "bg-[rgba(241,115,0,0.10)] text-[#F17300] border border-[rgba(241,115,0,0.20)]"
+                                : isAssignment
+                                ? "bg-[rgba(99,102,241,0.10)] text-[#818CF8] border border-[rgba(99,102,241,0.20)]"
+                                : "bg-[rgba(16,185,129,0.10)] text-[#34D399] border border-[rgba(16,185,129,0.20)]"
                             }`}
                           >
-                            {isExam && <Flame size={10} className="text-[var(--accent)]" />}
-                            {isAssignment && <Tag size={10} className="text-[var(--t3)]" />}
-                            {isSession && <Clock size={10} className="text-[var(--t3)]" />}
+                            {isExam && <Flame size={10} className="text-[#F17300]" />}
+                            {isAssignment && <Tag size={10} className="text-[#818CF8]" />}
+                            {isSession && <Clock size={10} className="text-[#34D399]" />}
                             {item.category.replace("_", " ")}
                           </span>
                         </div>
