@@ -517,21 +517,25 @@ def web_search(query: str, num_results: int = 5) -> list[dict]:
             ),
         )
 
-    response = _call_with_retry_sync(_call)
-    results = []
+    try:
+        response = _call_with_retry_sync(_call)
+        results = []
 
-    if response.candidates and response.candidates[0].grounding_metadata:
-        metadata = response.candidates[0].grounding_metadata
-        for chunk in getattr(metadata, "grounding_chunks", []):
-            web = getattr(chunk, "web", None)
-            if web:
-                results.append({
-                    "title": getattr(web, "title", "") or "Untitled",
-                    "uri": getattr(web, "uri", "") or "",
-                    "snippet": getattr(web, "snippet", "") or "",
-                })
+        if response and response.candidates and response.candidates[0].grounding_metadata:
+            metadata = response.candidates[0].grounding_metadata
+            for chunk in getattr(metadata, "grounding_chunks", []):
+                web = getattr(chunk, "web", None)
+                if web:
+                    results.append({
+                        "title": getattr(web, "title", "") or "Untitled",
+                        "uri": getattr(web, "uri", "") or "",
+                        "snippet": getattr(web, "snippet", "") or "",
+                    })
 
-    return results[:num_results]
+        return results[:num_results]
+    except Exception as err:
+        logger.warning(f"web_search exception caught gracefully: {err}")
+        return []
 
 
 async def web_search_async(query: str, num_results: int = 5) -> list[dict]:

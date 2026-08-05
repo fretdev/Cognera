@@ -487,7 +487,8 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
             system = SYSTEM_PROMPT + (NO_DOCS_NUDGE if doc_count == 0 else "")
 
             should_search_docs = (
-                doc_count > 0 and (
+                doc_count > 0 and
+                req.scope_mode != "web_only" and (
                     req.scope_document_ids is not None or
                     req.scope_mode == "documents_only" or
                     _is_document_signal_query(req.question)

@@ -86,14 +86,9 @@ async def stream_groq_qwen(
     messages: list[dict],
     model: str = "qwen-2.5-72b-instruct",
 ) -> AsyncIterator[dict]:
-    api_key = get_groq_key()
-    if not api_key:
+    all_groq_keys = get_all_groq_keys()
+    if not all_groq_keys:
         raise ValueError("No Groq API key configured.")
-
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
 
     formatted_messages = []
     for m in messages:
@@ -110,28 +105,48 @@ async def stream_groq_qwen(
         "temperature": 0.3,
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        async with client.stream("POST", GROQ_URL, headers=headers, json=payload) as response:
-            if response.status_code == 429:
-                raise ValueError("Groq Rate Limited (429)")
-            if response.status_code != 200:
-                body = await response.aread()
-                raise ValueError(f"Groq Error {response.status_code}: {body.decode()}")
+    last_err = None
+    for attempt_idx in range(max(1, len(all_groq_keys))):
+        api_key = get_groq_key()
+        if not api_key:
+            continue
 
-            async for line in response.aiter_lines():
-                line = line.strip()
-                if line.startswith("data: "):
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk_data = json.loads(data_str)
-                        delta = chunk_data.get("choices", [{}])[0].get("delta", {})
-                        text = delta.get("content", "")
-                        if text:
-                            yield {"type": "text", "content": text}
-                    except Exception:
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                async with client.stream("POST", GROQ_URL, headers=headers, json=payload) as response:
+                    if response.status_code == 429:
+                        logger.warning(f"Groq stream key {attempt_idx + 1} hit 429, rotating to next key in pool...")
+                        last_err = ValueError("Groq Rate Limited (429)")
                         continue
+                    if response.status_code != 200:
+                        body = await response.aread()
+                        raise ValueError(f"Groq Error {response.status_code}: {body.decode()}")
+
+                    async for line in response.aiter_lines():
+                        line = line.strip()
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk_data = json.loads(data_str)
+                                delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                text = delta.get("content", "")
+                                if text:
+                                    yield {"type": "text", "content": text}
+                            except Exception:
+                                continue
+                    return
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Groq stream attempt {attempt_idx + 1} failed: {e}")
+
+    raise last_err or ValueError("All Groq API keys rate limited.")
 
 
 async def stream_multi_provider_text(
@@ -140,8 +155,8 @@ async def stream_multi_provider_text(
     execute_tool: Any = None,
     preferred_model: str | None = "auto",
 ) -> AsyncIterator[dict]:
-    has_openrouter = bool(settings.openrouter_api_key.strip())
-    has_groq = bool(settings.groq_api_key.strip())
+    has_openrouter = bool(get_openrouter_key())
+    has_groq = bool(get_groq_key())
 
     # Explicit Model Direct Routing
     if preferred_model == "deepseek" and has_openrouter:
