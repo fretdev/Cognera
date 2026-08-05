@@ -8,9 +8,21 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+async function parseErrorMessage(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text);
+    if (json && json.detail) {
+      if (typeof json.detail === "string") return json.detail;
+      if (Array.isArray(json.detail)) return json.detail.map((d: any) => d.msg || String(d)).join(", ");
+    }
+  } catch {}
+  return text || `HTTP ${res.status}`;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { headers: await authHeaders() });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }
 
@@ -21,13 +33,13 @@ export async function apiPost<T>(path: string, body: unknown, signal?: AbortSign
     body: JSON.stringify(body),
     signal,
   });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, { method: "DELETE", headers: await authHeaders() });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }
 
@@ -35,7 +47,7 @@ export async function apiUpload<T>(path: string, file: File): Promise<T> {
   const fd = new FormData();
   fd.append("file", file);
   const res = await fetch(`${API_URL}${path}`, { method: "POST", headers: await authHeaders(), body: fd });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }
 
@@ -89,6 +101,6 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(await parseErrorMessage(res));
   return res.json();
 }

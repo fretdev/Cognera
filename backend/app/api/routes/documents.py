@@ -61,11 +61,14 @@ async def upload_document(
     doc_id  = str(uuid.uuid4())
     storage = f"{user.id}/{doc_id}{ext or '.bin'}"
 
-    # Store original file
-    get_supabase().storage.from_(BUCKET).upload(
-        storage, data,
-        file_options={"content-type": ct or "application/octet-stream"},
-    )
+    # Store original file (graceful fallback if bucket unconfigured)
+    try:
+        get_supabase().storage.from_(BUCKET).upload(
+            storage, data,
+            file_options={"content-type": ct or "application/octet-stream"},
+        )
+    except Exception as s_err:
+        pass
 
     # Insert document row (last_accessed_at defaults to now via DB default)
     call_supabase(lambda: get_supabase().table("documents").insert({

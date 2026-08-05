@@ -98,15 +98,15 @@ should be concise (1-3 sentences)."""
 
 @router.get("/flashcards", response_model=list[Flashcard])
 def list_flashcards(user: CurrentUser = Depends(get_current_user)):
-    
-    result = (
-        supabase.table("flashcards")
+    result = call_supabase(
+        lambda: get_supabase()
+        .table("flashcards")
         .select("id, question, answer")
         .eq("user_id", user.id)
         .order("created_at", desc=True)
         .execute()
     )
-    return [Flashcard(**row) for row in result.data]
+    return [Flashcard(**row) for row in (result.data or [])]
 
 
 # --------------------------------------------------------------------- Quiz
@@ -160,7 +160,6 @@ distractors plausible, not obviously wrong."""
             status_code=502, detail="The model returned an unexpected format. Try again."
         )
 
-    
     rows = []
     questions = []
     primary_document_id = req.document_ids[0]
@@ -202,12 +201,12 @@ distractors plausible, not obviously wrong."""
 
 @router.get("/quiz", response_model=list[QuizQuestion])
 def list_quiz_questions(user: CurrentUser = Depends(get_current_user)):
-    
-    result = (
-        supabase.table("quiz_questions")
+    result = call_supabase(
+        lambda: get_supabase()
+        .table("quiz_questions")
         .select("id, question, options, correct_option")
         .eq("user_id", user.id)
         .order("created_at", desc=True)
         .execute()
     )
-    return [QuizQuestion(**row) for row in result.data]
+    return [QuizQuestion(**row) for row in (result.data or [])]

@@ -3,14 +3,12 @@ Shared retrieval helper for flashcard/quiz generation: pulls chunks
 belonging to the selected documents evenly across documents (so every selected
 file is represented), and caps total length to stay within model windows.
 """
-from app.db.supabase_client import get_supabase
+from app.db.supabase_client import get_supabase, call_supabase
 
 MAX_CONTEXT_CHARS = 32_000  # ~8k tokens — plenty for flashcards & quizzes
 
 
 def get_combined_context(user_id: str, document_ids: list[str]) -> str:
-    supabase = get_supabase()
-
     if not document_ids:
         return ""
 
@@ -19,8 +17,9 @@ def get_combined_context(user_id: str, document_ids: list[str]) -> str:
     all_chunks = []
 
     for doc_id in document_ids:
-        res = (
-            supabase.table("document_chunks")
+        res = call_supabase(
+            lambda: get_supabase()
+            .table("document_chunks")
             .select("document_id, content, chunk_index")
             .eq("user_id", user_id)
             .eq("document_id", doc_id)
@@ -28,7 +27,7 @@ def get_combined_context(user_id: str, document_ids: list[str]) -> str:
             .limit(per_doc_limit)
             .execute()
         )
-        if res.data:
+        if res and res.data:
             all_chunks.extend(res.data)
 
     if not all_chunks:
