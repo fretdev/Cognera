@@ -67,8 +67,7 @@ def rotate_api_key():
 # Retry Logic — Handles 503 AND 429
 # ---------------------------------------------------------------------------
 
-def _call_with_retry_sync(fn, retries: int = 4, base_delay: float = 2.0):
-    fallback_models = ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.0-flash"]
+def _call_with_retry_sync(fn, retries: int = 3, base_delay: float = 1.0):
     last_error = None
     for attempt in range(retries + 1):
         try:
@@ -76,88 +75,39 @@ def _call_with_retry_sync(fn, retries: int = 4, base_delay: float = 2.0):
         except (ServerError, ClientError) as e:
             last_error = e
             status_code = getattr(e, 'code', None) or getattr(e, 'status_code', None)
-
-            is_retryable = (
-                isinstance(e, ServerError) or
-                (isinstance(e, ClientError) and status_code == 429) or
-                "quota" in str(e).lower()
-            )
-
-            if is_retryable and attempt < 1:
+            is_rate_limit = status_code == 429 or "quota" in str(e).lower()
+            is_server_error = isinstance(e, ServerError) or status_code == 503
+            if (is_rate_limit or is_server_error) and attempt < retries:
                 rotate_api_key()
-                retry_delay = 1.0
-                logger.warning(
-                    f"Sync API error {status_code}, rotated key, retrying in {retry_delay:.1f}s (attempt {attempt + 1})")
-                time.sleep(retry_delay)
+                time.sleep(base_delay)
                 continue
-
-            from fastapi import HTTPException
-            if status_code == 429 or "quota" in str(e).lower():
-                raise HTTPException(
-                    status_code=429,
-                    detail="AI service is temporarily overloaded. Please wait a moment and try again."
-                )
-            elif status_code == 503 or isinstance(e, ServerError):
-                raise HTTPException(
-                    status_code=503,
-                    detail="AI service is experiencing high demand. Please try again shortly."
-                )
-            else:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"AI service error: {str(e)}"
-                )
-    raise last_error
+            # Raise a plain exception — let the caller (multi_model_client) decide what to do
+            raise RuntimeError(f"Gemini API error {status_code}: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"Gemini unexpected error: {e}") from e
+    raise RuntimeError(f"Gemini all retries exhausted: {last_error}") from last_error
 
 
-async def _call_with_retry_async(fn, retries: int = 4, base_delay: float = 2.0):
+async def _call_with_retry_async(fn, retries: int = 3, base_delay: float = 1.0):
     last_error = None
     for attempt in range(retries + 1):
         try:
             return fn()
         except (ServerError, ClientError) as e:
             last_error = e
-            status_code = getattr(e, 'code', None) or getattr(
-                e, 'status_code', None)
-
-            is_retryable = (
-                isinstance(e, ServerError) or
-                (isinstance(e, ClientError) and status_code == 429)
-            )
-
-            if is_retryable and attempt < retries:
-                retry_delay = base_delay * (attempt + 1)
-                try:
-                    if hasattr(e, 'details') and e.details:
-                        for detail in e.details:
-                            if hasattr(detail, 'retry_delay'):
-                                retry_delay = detail.retry_delay.seconds + detail.retry_delay.nanos / 1e9
-                                break
-                except Exception:
-                    pass
-
-                logger.warning(
-                    f"API error {status_code}, retrying in {retry_delay:.1f}s (attempt {attempt + 1}/{retries})")
-                await asyncio.sleep(retry_delay)
+            status_code = getattr(e, 'code', None) or getattr(e, 'status_code', None)
+            is_rate_limit = status_code == 429 or "quota" in str(e).lower()
+            is_server_error = isinstance(e, ServerError) or status_code == 503
+            if (is_rate_limit or is_server_error) and attempt < retries:
+                rotate_api_key()
+                await asyncio.sleep(base_delay)
                 continue
+            raise RuntimeError(f"Gemini async API error {status_code}: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"Gemini async unexpected error: {e}") from e
+    raise RuntimeError(f"Gemini async all retries exhausted: {last_error}") from last_error
 
-            from fastapi import HTTPException
-            if status_code == 429:
-                raise HTTPException(
-                    status_code=429,
-                    detail="AI service is temporarily overloaded. Please wait a moment and try again."
-                )
-            elif status_code == 503 or isinstance(e, ServerError):
-                raise HTTPException(
-                    status_code=503,
-                    detail="AI service is experiencing high demand. Please try again shortly."
-                )
-            else:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"AI service error: {str(e)}"
-                )
-    raise last_error
+
 
 
 # ---------------------------------------------------------------------------
