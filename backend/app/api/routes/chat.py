@@ -212,14 +212,28 @@ async def tool_search_documents(
             {
                 "query_embedding": embedding,
                 "match_user_id": user_id,
-                "match_count": match_count,
+                "match_count": match_count * 3 if scope_document_ids else match_count,
             },
         ).execute())
         chunks = result.data or []
-        relevant = [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
         if scope_document_ids:
-            relevant = [c for c in relevant if c["document_id"] in scope_document_ids]
-        return relevant
+            relevant = [c for c in chunks if c.get("document_id") in scope_document_ids]
+            # Fallback if vector similarity threshold filtered everything out for broad prompts
+            if not relevant:
+                direct_res = call_supabase(lambda: get_supabase()
+                                           .table("document_chunks")
+                                           .select("id, document_id, content, chunk_index, document_title")
+                                           .in_("document_id", scope_document_ids)
+                                           .eq("user_id", user_id)
+                                           .order("chunk_index", desc=False)
+                                           .limit(match_count)
+                                           .execute())
+                relevant = direct_res.data or []
+        else:
+            relevant = [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
+            if not relevant and chunks:
+                relevant = chunks[:match_count]
+        return relevant[:match_count]
 
     relevant = await asyncio.to_thread(_run)
 
