@@ -230,26 +230,36 @@ async def tool_search_documents(
             if not relevant:
                 relevant = chunks[:match_count]
 
-        # If RPC failed or returned 0 chunks, fetch document chunks directly from table
+        # If RPC failed or returned 0 chunks, fetch document chunks directly from table without joining
         if not relevant:
             try:
                 def _query_table():
-                    q = get_supabase().table("document_chunks").select("id, document_id, content, chunk_index, documents(title)").eq("user_id", user_id)
+                    q = get_supabase().table("document_chunks").select("id, document_id, content, chunk_index").eq("user_id", user_id)
                     if scope_document_ids:
                         q = q.in_("document_id", scope_document_ids)
                     return q.order("chunk_index", desc=False).limit(match_count).execute()
 
                 direct_res = call_supabase(_query_table)
                 if direct_res.data:
-                    for c in direct_res.data:
-                        d_info = c.get("documents")
-                        doc_title = d_info.get("title") if isinstance(d_info, dict) else "Document"
+                    raw_chunks = direct_res.data
+                    doc_ids = list({c["document_id"] for c in raw_chunks if c.get("document_id")})
+                    title_map = {}
+                    if doc_ids:
+                        try:
+                            docs_res = call_supabase(lambda: get_supabase().table("documents").select("id, title").in_("id", doc_ids).execute())
+                            if docs_res.data:
+                                title_map = {d["id"]: d["title"] for d in docs_res.data}
+                        except Exception:
+                            pass
+
+                    for c in raw_chunks:
+                        doc_id = c.get("document_id", "")
                         relevant.append({
-                            "id": c["id"],
-                            "document_id": c["document_id"],
-                            "content": c["content"],
-                            "chunk_index": c["chunk_index"],
-                            "document_title": doc_title,
+                            "id": c.get("id"),
+                            "document_id": doc_id,
+                            "content": c.get("content", ""),
+                            "chunk_index": c.get("chunk_index", 0),
+                            "document_title": title_map.get(doc_id, "Document"),
                         })
             except Exception as direct_err:
                 logger.warning(f"Direct document_chunks table query error: {direct_err}")
