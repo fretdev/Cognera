@@ -112,6 +112,10 @@ export default function ChatPanel({
   const [thinkingStatus, setThinkingStatus] = useState<string>("");
   const [selectedModel, setSelectedModel] = useState<ModelId>("auto");
   const [isModelOpen, setIsModelOpen] = useState(false);
+  const [userDocuments, setUserDocuments] = useState<{ id: string; title: string }[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [isDocSelectOpen, setIsDocSelectOpen] = useState(false);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
 
   const convoIdRef   = useRef<string | null>(initConvoId || null);
   const userIdRef    = useRef<string | null>(null);
@@ -128,10 +132,23 @@ export default function ChatPanel({
   const displayedRef = useRef<string>("");
   const firstChunkReceived = useRef(false);
 
-  useEffect(() => {
-    createClient().auth.getUser()
-      .then(({ data }) => { userIdRef.current = data.user?.id || null; });
+  const fetchUserDocuments = useCallback(async () => {
+    const supabase = createClient();
+    const { data: session } = await supabase.auth.getSession();
+    if (session?.session?.user?.id) {
+      userIdRef.current = session.session.user.id;
+      const { data: docs } = await supabase
+        .from("documents")
+        .select("id, title")
+        .eq("user_id", session.session.user.id)
+        .order("created_at", { ascending: false });
+      if (docs) setUserDocuments(docs);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchUserDocuments();
+  }, [fetchUserDocuments]);
 
   /* ── Scroll ──────────────────────────────────────────────────────────── */
   function isNearBottom() {
@@ -237,6 +254,7 @@ export default function ChatPanel({
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
+      fetchUserDocuments();
       return `📄 **${data.title}** uploaded and indexed (${data.chunks_created} sections ready). You can now ask questions about it.`;
     } catch (err) {
       return `⚠️ Failed to upload file: ${(err as Error).message}`;
@@ -335,6 +353,8 @@ export default function ChatPanel({
             conversation_history: historyPayload,
             has_doc_history: hasDocHistory,
             preferred_model: selectedModel,
+            scope_document_ids: selectedDocId ? [selectedDocId] : null,
+            scope_mode: webSearchEnabled ? "web_only" : (selectedDocId ? "documents_only" : null),
           }),
           signal: controller.signal,
         });
@@ -796,6 +816,156 @@ export default function ChatPanel({
                     </>
                   )}
                 </div>
+
+                {/* In-Input Document Scope Selector Pill */}
+                <div style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsDocSelectOpen(!isDocSelectOpen)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      background: selectedDocId ? "var(--s3)" : "var(--s2)",
+                      border: selectedDocId ? "1px solid var(--b3)" : "1px solid var(--b2)",
+                      color: selectedDocId ? "var(--t1)" : "var(--t2)",
+                      fontSize: "12px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      maxWidth: "150px",
+                    }}
+                    title="Scope search focus to specific document"
+                  >
+                    <BookOpen size={12} style={{ color: selectedDocId ? "var(--t1)" : "var(--t3)", flexShrink: 0 }} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {selectedDocId
+                        ? userDocuments.find(d => d.id === selectedDocId)?.title || "Selected Doc"
+                        : "All Documents"}
+                    </span>
+                    <ChevronDown size={12} style={{ color: "var(--t3)", flexShrink: 0 }} />
+                  </button>
+
+                  {isDocSelectOpen && (
+                    <>
+                      <div
+                        style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                        onClick={() => setIsDocSelectOpen(false)}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 8px)",
+                        left: 0,
+                        width: "250px",
+                        maxHeight: "220px",
+                        overflowY: "auto",
+                        background: "var(--s1)",
+                        border: "1px solid var(--b2)",
+                        borderRadius: "12px",
+                        padding: "6px",
+                        boxShadow: "0 -12px 32px rgba(0,0,0,0.35)",
+                        backdropFilter: "blur(16px)",
+                        zIndex: 50,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "2px",
+                      }}>
+                        <div style={{ padding: "6px 8px 4px", fontSize: "10.5px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                          Scope Search Focus
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDocId(null);
+                            setIsDocSelectOpen(false);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "6px 9px",
+                            borderRadius: "8px",
+                            background: selectedDocId === null ? "var(--s2)" : "transparent",
+                            border: "none",
+                            textAlign: "left",
+                            cursor: "pointer",
+                            width: "100%",
+                            fontSize: "12px",
+                            color: "var(--t1)",
+                            fontWeight: 500,
+                          }}
+                          onMouseEnter={e => { if (selectedDocId !== null) (e.currentTarget as HTMLElement).style.background = "var(--s2)"; }}
+                          onMouseLeave={e => { if (selectedDocId !== null) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                        >
+                          <span>All Documents (Smart Search)</span>
+                          {selectedDocId === null && <Check size={13} style={{ color: "var(--t1)" }} />}
+                        </button>
+
+                        {userDocuments.map((doc) => {
+                          const isSelected = doc.id === selectedDocId;
+                          return (
+                            <button
+                              key={doc.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedDocId(doc.id);
+                                setIsDocSelectOpen(false);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                padding: "6px 9px",
+                                borderRadius: "8px",
+                                background: isSelected ? "var(--s2)" : "transparent",
+                                border: "none",
+                                textAlign: "left",
+                                cursor: "pointer",
+                                width: "100%",
+                                fontSize: "12px",
+                                color: "var(--t1)",
+                                fontWeight: 500,
+                              }}
+                              onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--s2)"; }}
+                              onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                            >
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {doc.title}
+                              </span>
+                              {isSelected && <Check size={13} style={{ color: "var(--t1)", flexShrink: 0 }} />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* In-Input Web Search Toggle Pill */}
+                <button
+                  type="button"
+                  onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
+                    padding: "3px 8px",
+                    borderRadius: "6px",
+                    background: webSearchEnabled ? "var(--s3)" : "var(--s2)",
+                    border: webSearchEnabled ? "1px solid var(--b3)" : "1px solid var(--b2)",
+                    color: webSearchEnabled ? "var(--t1)" : "var(--t3)",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                  title="Toggle Web Search Mode"
+                >
+                  <Sparkles size={12} style={{ color: webSearchEnabled ? "#38BDF8" : "var(--t3)" }} />
+                  <span>Web Search</span>
+                </button>
               </div>
 
               {loading || uploading ? (
