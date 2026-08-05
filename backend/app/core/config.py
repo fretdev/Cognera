@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     gemini_embedding_model: str = "gemini-embedding-001"
 
     openrouter_api_key: str = ""
+    openrouter_api_keys: str = ""
     groq_api_key: str = ""
+    groq_api_keys: str = ""
     preferred_chat_provider: str = "auto"
 
     cors_origins: str = "http://localhost:3000"

@@ -14,6 +14,7 @@ from typing import AsyncIterator, Any
 import httpx
 
 from app.core.config import settings
+from app.services.key_rotator import get_groq_key, get_openrouter_key, get_all_groq_keys
 from app.services.gemini_client import (
     generate_stream as gemini_generate_stream,
     generate_text as gemini_generate_text,
@@ -31,7 +32,7 @@ async def stream_openrouter_deepseek(
     messages: list[dict],
     model: str = "deepseek/deepseek-chat",
 ) -> AsyncIterator[dict]:
-    api_key = settings.openrouter_api_key.strip()
+    api_key = get_openrouter_key()
     if not api_key:
         raise ValueError("No OpenRouter API key configured.")
 
@@ -85,7 +86,7 @@ async def stream_groq_qwen(
     messages: list[dict],
     model: str = "qwen-2.5-72b-instruct",
 ) -> AsyncIterator[dict]:
-    api_key = settings.groq_api_key.strip()
+    api_key = get_groq_key()
     if not api_key:
         raise ValueError("No Groq API key configured.")
 
@@ -205,45 +206,49 @@ def generate_multi_provider_json(prompt: str) -> str:
     from app.services.gemini_client import generate_json
     from fastapi import HTTPException
 
-    has_groq = bool(settings.groq_api_key.strip())
-    has_openrouter = bool(settings.openrouter_api_key.strip())
+    all_groq_keys = get_all_groq_keys()
 
-    # If Groq key is present, try Groq FIRST for instant sub-second JSON generation!
-    if has_groq:
-        try:
-            import httpx
-            headers = {
-                "Authorization": f"Bearer {settings.groq_api_key.strip()}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": "llama-3.3-70b-versatile",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-                "response_format": {"type": "json_object"},
-            }
-            with httpx.Client(timeout=25.0) as client:
-                resp = client.post(GROQ_URL, headers=headers, json=payload)
-                if resp.status_code == 200:
-                    content = resp.json()["choices"][0]["message"]["content"].strip()
-                    if content.startswith("```"):
-                        content = content.split("```")[1]
-                        if content.startswith("json"):
-                            content = content[4:]
-                    return content.strip()
-        except Exception as e:
-            logger.warning(f"Groq JSON generation failed: {e}")
+    # If Groq keys are present, try available Groq keys in pool FIRST for instant sub-second JSON generation!
+    for attempt_idx in range(max(1, len(all_groq_keys))):
+        groq_key = get_groq_key()
+        if groq_key:
+            try:
+                import httpx
+                headers = {
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                }
+                payload = {
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                    "response_format": {"type": "json_object"},
+                }
+                with httpx.Client(timeout=25.0) as client:
+                    resp = client.post(GROQ_URL, headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        content = resp.json()["choices"][0]["message"]["content"].strip()
+                        if content.startswith("```"):
+                            content = content.split("```")[1]
+                            if content.startswith("json"):
+                                content = content[4:]
+                        return content.strip()
+                    elif resp.status_code == 429:
+                        logger.warning(f"Groq Key {attempt_idx + 1} hit 429, rotating to next key...")
+            except Exception as e:
+                logger.warning(f"Groq JSON generation failed on key {attempt_idx + 1}: {e}")
 
     try:
         return generate_json(prompt)
     except Exception as e:
         logger.warning(f"Gemini generate_json failed ({e}), trying DeepSeek fallback...")
 
-    if has_openrouter:
+    openrouter_key = get_openrouter_key()
+    if openrouter_key:
         try:
             import httpx
             headers = {
-                "Authorization": f"Bearer {settings.openrouter_api_key.strip()}",
+                "Authorization": f"Bearer {openrouter_key}",
                 "Content-Type": "application/json",
             }
             payload = {

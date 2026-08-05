@@ -49,19 +49,17 @@ class ToolCallResult:
     model_content: Any | None = None
 
 
-_api_key_index = 0
+from app.services.key_rotator import get_gemini_key
 
 def get_gemini_client() -> genai.Client:
-    global _api_key_index
-    keys = [k.strip() for k in settings.gemini_api_keys.split(",") if k.strip()]
-    if not keys:
-        keys = [settings.gemini_api_key]
-    key = keys[_api_key_index % len(keys)]
+    key = get_gemini_key()
+    if not key:
+        key = settings.gemini_api_key
     return genai.Client(api_key=key)
 
 def rotate_api_key():
-    global _api_key_index
-    _api_key_index += 1
+    # Calling get_gemini_key() automatically advances to the next key in the pool
+    _ = get_gemini_key()
     logger.info("Rotated to next Gemini API key in key pool.")
 
 
