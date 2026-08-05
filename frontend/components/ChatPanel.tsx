@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowUp, ArrowDown, Square, FileText,
   Pencil, AlertCircle, BookOpen, Zap, Plus, X,
+  ChevronDown, Check, Sparkles, Sliders,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { createClient } from "@/lib/supabase/client";
@@ -24,6 +25,15 @@ type Msg    = {
   isError?: boolean;
   streaming?: boolean;
 };
+
+type ModelId = "auto" | "deepseek" | "groq" | "gemini";
+
+const MODEL_OPTIONS: { id: ModelId; name: string; tag: string; desc: string }[] = [
+  { id: "auto", name: "Auto (Smart Route)", tag: "Recommended", desc: "Automatic failover across all free AI models" },
+  { id: "deepseek", name: "DeepSeek V3", tag: "OpenRouter", desc: "Deep academic reasoning & math problem solving" },
+  { id: "groq", name: "Qwen 2.5 72B", tag: "Groq 500t/s", desc: "Ultra-fast sub-second response generation" },
+  { id: "gemini", name: "Gemini 2.0 Flash", tag: "Google AI", desc: "Multimodal document RAG & web search" },
+];
 
 const API_URL         = process.env.NEXT_PUBLIC_API_URL!;
 const CONTEXT_WINDOW  = 6;
@@ -100,6 +110,8 @@ export default function ChatPanel({
   const [attachedFile,  setAttachedFile]  = useState<File | null>(null);
   const [uploading,     setUploading]     = useState(false);
   const [thinkingStatus, setThinkingStatus] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<ModelId>("auto");
+  const [isModelOpen, setIsModelOpen] = useState(false);
 
   const convoIdRef   = useRef<string | null>(initConvoId || null);
   const userIdRef    = useRef<string | null>(null);
@@ -322,6 +334,7 @@ export default function ChatPanel({
             question: currentQuestion,
             conversation_history: historyPayload,
             has_doc_history: hasDocHistory,
+            preferred_model: selectedModel,
           }),
           signal: controller.signal,
         });
@@ -509,6 +522,120 @@ export default function ChatPanel({
   /* ── Render ──────────────────────────────────────────────────────────── */
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative", overflow: "hidden" }}>
+      {/* Top Bar — Frontier Lab Style Model Selector */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "10px 16px",
+        borderBottom: "1px solid var(--b1)",
+        background: "var(--bg-glass)",
+        backdropFilter: "blur(12px)",
+        zIndex: 20,
+        position: "relative",
+      }}>
+        {/* Model Trigger Button */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setIsModelOpen(!isModelOpen)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "5px 10px",
+              borderRadius: "8px",
+              background: "var(--s2)",
+              border: "1px solid var(--b2)",
+              color: "var(--t1)",
+              fontSize: "13px",
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              {MODEL_OPTIONS.find(m => m.id === selectedModel)?.name}
+            </span>
+            <ChevronDown size={14} className="text-[var(--t3)]" />
+          </button>
+
+          {/* Model Dropdown Menu */}
+          {isModelOpen && (
+            <>
+              <div
+                style={{ position: "fixed", inset: 0, zIndex: 30 }}
+                onClick={() => setIsModelOpen(false)}
+              />
+              <div style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                left: 0,
+                width: "280px",
+                background: "var(--s1)",
+                border: "1px solid var(--b2)",
+                borderRadius: "12px",
+                padding: "6px",
+                boxShadow: "0 12px 32px rgba(0,0,0,0.35)",
+                backdropFilter: "blur(16px)",
+                zIndex: 40,
+                display: "flex",
+                flexDirection: "column",
+                gap: "2px",
+              }}>
+                <div style={{ padding: "6px 8px 4px", fontSize: "11px", fontWeight: 600, color: "var(--t3)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Model Intelligence
+                </div>
+                {MODEL_OPTIONS.map((opt) => {
+                  const isSelected = opt.id === selectedModel;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedModel(opt.id);
+                        setIsModelOpen(false);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        padding: "8px 10px",
+                        borderRadius: "8px",
+                        background: isSelected ? "var(--s2)" : "transparent",
+                        border: "none",
+                        textAlign: "left",
+                        cursor: "pointer",
+                        width: "100%",
+                        transition: "background 0.15s ease",
+                      }}
+                      onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "var(--s2)"; }}
+                      onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    >
+                      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--t1)" }}>{opt.name}</span>
+                          <span style={{ fontSize: "10px", padding: "1px 5px", borderRadius: "4px", background: "var(--s3)", color: "var(--t2)", fontWeight: 500 }}>
+                            {opt.tag}
+                          </span>
+                        </div>
+                        <span style={{ fontSize: "11px", color: "var(--t3)", lineHeight: "1.3" }}>{opt.desc}</span>
+                      </div>
+                      {isSelected && <Check size={14} style={{ color: "var(--accent)", marginTop: "2px", flexShrink: 0 }} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Minimalist Model Status Indicator */}
+        <div style={{ fontSize: "12px", color: "var(--t3)", fontWeight: 400 }}>
+          {selectedModel === "auto" ? "Smart Cascade Active" : `${MODEL_OPTIONS.find(m => m.id === selectedModel)?.tag} Direct`}
+        </div>
+      </div>
+
       {/* Messages */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", position: "relative" }}>
         <div style={{ maxWidth: "700px", margin: "0 auto", padding: "24px 16px 32px" }}>

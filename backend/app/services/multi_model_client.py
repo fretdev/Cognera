@@ -137,18 +137,32 @@ async def stream_multi_provider_text(
     messages: list[dict],
     tools: list[Any] = None,
     execute_tool: Any = None,
+    preferred_model: str | None = "auto",
 ) -> AsyncIterator[dict]:
-    """
-    Unstoppable 4-Model Provider Cascade:
-    1. Gemini 2.0 Flash-Lite / 1.5 Flash (with Tool calling support)
-    2. If Gemini 429 -> Groq (Llama 3.3 70B / Qwen 2.5 72B @ 500t/s)
-    3. If Groq 429 -> DeepSeek V3 (via OpenRouter)
-    """
     has_openrouter = bool(settings.openrouter_api_key.strip())
     has_groq = bool(settings.groq_api_key.strip())
 
-    gemini_hit_429 = False
+    # Explicit Model Direct Routing
+    if preferred_model == "deepseek" and has_openrouter:
+        try:
+            yield {"type": "trace", "step": "Running DeepSeek V3…"}
+            async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
+                yield chunk
+            return
+        except Exception as e:
+            logger.warning(f"DeepSeek direct call failed ({e}), falling back to auto cascade…")
 
+    if preferred_model == "groq" and has_groq:
+        try:
+            yield {"type": "trace", "step": "Running Qwen 2.5 72B (Groq 500t/s)…"}
+            async for chunk in stream_groq_qwen(messages, "qwen-2.5-72b-instruct"):
+                yield chunk
+            return
+        except Exception as e:
+            logger.warning(f"Groq direct call failed ({e}), falling back to auto cascade…")
+
+    # Auto Model Cascade Mode
+    gemini_hit_429 = False
     try:
         async for chunk in gemini_generate_stream(messages, tools=tools, execute_tool=execute_tool):
             if chunk.get("type") == "error" and chunk.get("code") == "RATE_LIMIT":
@@ -164,7 +178,6 @@ async def stream_multi_provider_text(
     if gemini_hit_429:
         if has_groq:
             try:
-                logger.info("Failing over to Groq (Llama 3.3 70B / Qwen 2.5) @ 500t/s…")
                 yield {"type": "trace", "step": "Gemini busy. Switching to Groq (500t/s)…"}
                 async for chunk in stream_groq_qwen(messages, "llama-3.3-70b-versatile"):
                     yield chunk
@@ -174,7 +187,6 @@ async def stream_multi_provider_text(
 
         if has_openrouter:
             try:
-                logger.info("Failing over to DeepSeek V3 via OpenRouter…")
                 yield {"type": "trace", "step": "Switching to DeepSeek V3…"}
                 async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
                     yield chunk

@@ -319,6 +319,7 @@ class AskRequest(BaseModel):
     conversation_id: str | None = None
     conversation_history: list[dict] | None = None
     has_doc_history: bool = False
+    preferred_model: str | None = "auto"
 
 
 class Source(BaseModel):
@@ -495,7 +496,9 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
             executor = _make_tool_executor(
                 user.id, req.scope_document_ids, sources)
 
-            async for evt in stream_multi_provider_text(messages, tools=tools, execute_tool=executor):
+            async for evt in stream_multi_provider_text(
+                messages, tools=tools, execute_tool=executor, preferred_model=req.preferred_model
+            ):
                 if evt["type"] == "trace":
                     trace.append(evt)
                 yield f"data: {json.dumps(evt)}\n\n"
