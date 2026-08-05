@@ -70,38 +70,31 @@ def rotate_api_key():
 # ---------------------------------------------------------------------------
 
 def _call_with_retry_sync(fn, retries: int = 4, base_delay: float = 2.0):
+    fallback_models = ["gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-2.0-flash"]
     last_error = None
     for attempt in range(retries + 1):
         try:
             return fn()
         except (ServerError, ClientError) as e:
             last_error = e
-            status_code = getattr(e, 'code', None) or getattr(
-                e, 'status_code', None)
+            status_code = getattr(e, 'code', None) or getattr(e, 'status_code', None)
 
             is_retryable = (
                 isinstance(e, ServerError) or
-                (isinstance(e, ClientError) and status_code == 429)
+                (isinstance(e, ClientError) and status_code == 429) or
+                "quota" in str(e).lower()
             )
 
             if is_retryable and attempt < retries:
+                rotate_api_key()
                 retry_delay = base_delay * (attempt + 1)
-                try:
-                    if hasattr(e, 'details') and e.details:
-                        for detail in e.details:
-                            if hasattr(detail, 'retry_delay'):
-                                retry_delay = detail.retry_delay.seconds + detail.retry_delay.nanos / 1e9
-                                break
-                except Exception:
-                    pass
-
                 logger.warning(
-                    f"API error {status_code}, retrying in {retry_delay:.1f}s (attempt {attempt + 1}/{retries})")
+                    f"Sync API error {status_code}, rotated key, retrying in {retry_delay:.1f}s (attempt {attempt + 1}/{retries})")
                 time.sleep(retry_delay)
                 continue
 
             from fastapi import HTTPException
-            if status_code == 429:
+            if status_code == 429 or "quota" in str(e).lower():
                 raise HTTPException(
                     status_code=429,
                     detail="AI service is temporarily overloaded. Please wait a moment and try again."

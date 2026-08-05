@@ -199,3 +199,69 @@ async def stream_multi_provider_text(
             "message": "AI quota is temporarily busy. Please wait a few seconds and try again.",
             "code": "RATE_LIMIT",
         }
+
+
+def generate_multi_provider_json(prompt: str) -> str:
+    from app.services.gemini_client import generate_json
+    from fastapi import HTTPException
+
+    try:
+        return generate_json(prompt)
+    except Exception as e:
+        logger.warning(f"Gemini generate_json failed ({e}), trying Groq/DeepSeek fallbacks...")
+
+    has_groq = bool(settings.groq_api_key.strip())
+    if has_groq:
+        try:
+            import httpx
+            headers = {
+                "Authorization": f"Bearer {settings.groq_api_key.strip()}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "response_format": {"type": "json_object"},
+            }
+            with httpx.Client(timeout=35.0) as client:
+                resp = client.post(GROQ_URL, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    content = resp.json()["choices"][0]["message"]["content"].strip()
+                    if content.startswith("```"):
+                        content = content.split("```")[1]
+                        if content.startswith("json"):
+                            content = content[4:]
+                    return content.strip()
+        except Exception as e:
+            logger.warning(f"Groq JSON fallback failed: {e}")
+
+    has_openrouter = bool(settings.openrouter_api_key.strip())
+    if has_openrouter:
+        try:
+            import httpx
+            headers = {
+                "Authorization": f"Bearer {settings.openrouter_api_key.strip()}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": "deepseek/deepseek-chat",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+            }
+            with httpx.Client(timeout=35.0) as client:
+                resp = client.post(OPENROUTER_URL, headers=headers, json=payload)
+                if resp.status_code == 200:
+                    content = resp.json()["choices"][0]["message"]["content"].strip()
+                    if content.startswith("```"):
+                        content = content.split("```")[1]
+                        if content.startswith("json"):
+                            content = content[4:]
+                    return content.strip()
+        except Exception as e:
+            logger.warning(f"DeepSeek JSON fallback failed: {e}")
+
+    raise HTTPException(
+        status_code=429,
+        detail="AI service is temporarily overloaded. Please wait a moment and try again."
+    )

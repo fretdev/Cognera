@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from app.core.auth import CurrentUser, get_current_user
 from app.db.supabase_client import get_supabase, call_supabase
-from app.services.gemini_client import generate_json
+from app.services.multi_model_client import generate_multi_provider_json
 from app.services.retrieval import get_combined_context
 
 router = APIRouter(prefix="/study-tools", tags=["study-tools"])
@@ -61,7 +61,7 @@ commentary, in this exact shape:
 Questions should test understanding, not just word-for-word recall. Answers
 should be concise (1-3 sentences)."""
 
-    raw = generate_json(prompt)
+    raw = generate_multi_provider_json(prompt)
 
     try:
         items = json.loads(raw)
@@ -151,7 +151,7 @@ Each question must have exactly 4 options. correct_option is the
 zero-based index of the correct answer in the options array. Make
 distractors plausible, not obviously wrong."""
 
-    raw = generate_json(prompt)
+    raw = generate_multi_provider_json(prompt)
 
     try:
         items = json.loads(raw)
