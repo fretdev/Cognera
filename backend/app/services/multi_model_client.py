@@ -139,34 +139,51 @@ async def stream_multi_provider_text(
     execute_tool: Any = None,
 ) -> AsyncIterator[dict]:
     """
-    4-Model Unified Streaming Cascade:
-    DeepSeek V3 (OpenRouter) -> Qwen 2.5 72B (Groq) -> Gemini 2.0 Flash-Lite (Google) -> Gemini 1.5 Flash (Google)
+    Unstoppable 4-Model Provider Cascade:
+    1. Gemini 2.0 Flash-Lite / 1.5 Flash (with Tool calling support)
+    2. If Gemini 429 -> Groq (Llama 3.3 70B / Qwen 2.5 72B @ 500t/s)
+    3. If Groq 429 -> DeepSeek V3 (via OpenRouter)
     """
     has_openrouter = bool(settings.openrouter_api_key.strip())
     has_groq = bool(settings.groq_api_key.strip())
 
-    # Provider 1: DeepSeek V3 (via OpenRouter) if key configured and no tools required
-    if has_openrouter and not tools:
-        try:
-            logger.info("Routing query to DeepSeek V3 via OpenRouter…")
-            yield {"type": "trace", "step": "Thinking with DeepSeek V3…"}
-            async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
-                yield chunk
-            return
-        except Exception as e:
-            logger.warning(f"DeepSeek/OpenRouter failed ({e}), falling back to next provider…")
+    gemini_hit_429 = False
 
-    # Provider 2: Qwen 2.5 72B / Llama 3.3 70B (via Groq) if key configured and no tools required
-    if has_groq and not tools:
-        try:
-            logger.info("Routing query to Qwen 2.5 72B via Groq…")
-            yield {"type": "trace", "step": "Thinking with Qwen 2.5 (Groq 500t/s)…"}
-            async for chunk in stream_groq_qwen(messages, "qwen-2.5-72b-instruct"):
-                yield chunk
+    try:
+        async for chunk in gemini_generate_stream(messages, tools=tools, execute_tool=execute_tool):
+            if chunk.get("type") == "error" and chunk.get("code") == "RATE_LIMIT":
+                gemini_hit_429 = True
+                break
+            yield chunk
+        if not gemini_hit_429:
             return
-        except Exception as e:
-            logger.warning(f"Groq failed ({e}), falling back to Gemini…")
+    except Exception as e:
+        logger.warning(f"Gemini stream exception ({e}), triggering provider failover…")
+        gemini_hit_429 = True
 
-    # Provider 3 & 4: Gemini 2.0 Flash-Lite & 1.5 Flash with tool support & key pool rotation
-    async for chunk in gemini_generate_stream(messages, tools=tools, execute_tool=execute_tool):
-        yield chunk
+    if gemini_hit_429:
+        if has_groq:
+            try:
+                logger.info("Failing over to Groq (Llama 3.3 70B / Qwen 2.5) @ 500t/s…")
+                yield {"type": "trace", "step": "Gemini busy. Switching to Groq (500t/s)…"}
+                async for chunk in stream_groq_qwen(messages, "llama-3.3-70b-versatile"):
+                    yield chunk
+                return
+            except Exception as e:
+                logger.warning(f"Groq failover failed: {e}")
+
+        if has_openrouter:
+            try:
+                logger.info("Failing over to DeepSeek V3 via OpenRouter…")
+                yield {"type": "trace", "step": "Switching to DeepSeek V3…"}
+                async for chunk in stream_openrouter_deepseek(messages, "deepseek/deepseek-chat"):
+                    yield chunk
+                return
+            except Exception as e:
+                logger.warning(f"DeepSeek failover failed: {e}")
+
+        yield {
+            "type": "error",
+            "message": "AI quota is temporarily busy. Please wait a few seconds and try again.",
+            "code": "RATE_LIMIT",
+        }
