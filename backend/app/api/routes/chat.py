@@ -1,7 +1,10 @@
 """
-Cognera — Chat API Route (Production-Patched v2.1)
-====================================================
-No external cache dependencies. Uses simple dict with TTL.
+Cognera — Chat API Route (RAG & Multi-Turn Upgraded v3.0)
+==========================================================
+- Multi-turn conversation memory (passes recent turns to Gemini)
+- Untruncated full chunk context retrieval
+- Document scope filtering
+- Smart Web Search permission prompting when notes return no matches
 """
 
 import asyncio
@@ -27,61 +30,37 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
 
 SIMILARITY_THRESHOLD = 0.20
-CONTEXT_CHUNKS = 3
+CONTEXT_CHUNKS = 6
 
-# Simple cache with TTL (no external deps)
-_orchestrator_cache = {}
-_CACHE_TTL = 60
-
-
-SYSTEM_PROMPT = """You are Cognera, an AI study assistant. Your job is to HELP, not to ask questions.
+SYSTEM_PROMPT = """You are Cognera, an AI study assistant. Your job is to HELP students understand their course materials deeply and accurately.
 
 ## CORE RULES (follow in order):
 
 1. **ALWAYS search documents first** if the student has uploaded materials.
-   Call tool_search_documents for ANY of these:
-   - Questions about topics, concepts, theories, definitions
-   - Requests for summaries, overviews, key points
-   - "What is in my notes", "what did I upload", "my documents"
-   - Study help, exam prep, homework questions
-   - ANYTHING that could plausibly be in course materials
+   Call tool_search_documents for ANY academic, study, course, or material questions.
 
 2. **NEVER ask the user to clarify.** If their query is vague, search their
-   documents and give the best answer you can from the results. If the
-   documents don't have the answer, say so clearly — then offer to search
-   the web or suggest what to upload.
+   documents and give the best answer you can from the results.
 
 3. **Call tool_search_web ONLY for:**
    - Current events, news, weather, sports scores, stock prices
-   - "What happened yesterday", "latest research", "recent developments"
-   - Explicit requests: "search Google", "look this up online"
-   - After tool_search_documents returns ZERO results
+   - Explicit requests: "search Google", "look this up online", "search web"
+   - When the user explicitly agrees or asks to search the web after notes return no results.
 
-4. **You may call BOTH tools** if the question needs both context
-   (e.g., "compare my notes on relativity with current research").
+4. **CITATIONS**:
+   - When citing documents: (Source: Document Title)
+   - Use clean Markdown: headings, bullet points, bold key terms.
 
-5. **If no tools are needed**, answer directly (math, logic, creative writing).
-
-## CITATION RULES:
-- When citing documents: (Source: Document Title)
-- When citing web: (Source: Website Name)
-- Use markdown: headings, bullets, bold for key terms
-- Be concise but thorough
-
-## RESPONSE STYLE:
-- Direct. No "I'd be happy to help!" fluff.
-- If documents are empty: "I searched your materials but didn't find relevant
-  content on [topic]. Here's what I found online:" [web results]
-- If no docs uploaded: "You haven't uploaded any documents yet. You can add
-  materials via the + button. Here's what I found online:" [web results]"""
+5. **RESPONSE STYLE**:
+   - Direct, clear, academic, and encouraging.
+"""
 
 NO_DOCS_NUDGE = (
     "\n\nNote: This student has not uploaded any documents yet. "
     "If they ask about their notes/materials, mention briefly that they "
     "can upload files via the + button, then answer from general knowledge "
-    "or web search."
+    "or offer web search."
 )
-
 
 WEB_ONLY_KEYWORDS = {
     "news", "yesterday", "today", "last week", "last month", "recently",
@@ -92,7 +71,12 @@ WEB_ONLY_KEYWORDS = {
     "stock price", "stock market", "bitcoin", "crypto", "trading",
     "died", "passed away", "married", "divorced", "celebrity",
     "search google", "look up online", "what does the internet say",
-    "latest version", "current release",
+    "latest version", "current release", "search web", "web search",
+}
+
+WEB_PERMISSION_AFFIRMATIVE = {
+    "yes", "yeah", "sure", "go ahead", "search web", "search google",
+    "look online", "ok", "okay", "please do", "yep", "do it", "find online",
 }
 
 
@@ -106,46 +90,16 @@ def _is_obviously_web_query(query: str) -> bool:
     return False
 
 
-DOC_SIGNALS = {
-    "my notes", "my documents", "my files", "my uploads", "i uploaded",
-    "the pdf", "the document", "the file", "the slides", "the textbook",
-    "this document", "this file", "this pdf", "the uploaded", "recent upload",
-    "attachment", "notes", "study", "quiz", "flashcards", "presentation", "deck",
-    "chapter", "section", "lecture", "course", "class", "professor",
-    "study guide", "exam prep", "quiz me",
-    "summarize", "overview", "key points", "main topics", "important details",
-    "what is covered", "what does it say", "explain this concept",
-    "how does this work", "what is the difference between",
-    "compare and contrast", "definition of", "meaning of", "break down",
-}
-
-IMPLICIT_PRONOUNS = {
-    "it", "that", "this section", "these", "those",
-    "what does it", "explain it", "tell me about it", "summarize it",
-    "is it", "can you explain this", "in here", "from this", "this topic",
-}
-
-AMBIGUOUS_FILE_PATTERNS = [
-    "which document", "which file", "which pdf", "which notes", "which upload",
-    "what document", "what file", "what pdf", "which one should i read",
-    "which file should i read", "what notes do i have",
-]
-
-
-def _is_document_query(query: str, has_active_docs: bool = False, has_doc_history: bool = False) -> bool:
-    q_lower = query.lower()
-    for signal in DOC_SIGNALS:
-        if signal in q_lower:
-            return True
-
-    if has_active_docs or has_doc_history:
-        for p in IMPLICIT_PRONOUNS:
-            if p in q_lower:
-                return True
-        words = set(q_lower.split())
-        if words.intersection({"it", "that", "this", "these", "those"}):
-            return True
-
+def _has_web_permission(query: str, history: list[dict] | None = None) -> bool:
+    q_lower = query.lower().strip()
+    if any(k in q_lower for k in WEB_PERMISSION_AFFIRMATIVE):
+        return True
+    if history:
+        for msg in reversed(history[-2:]):
+            content = (msg.get("content") or "").lower()
+            if "search the web" in content or "look online" in content:
+                if any(w in q_lower for w in ["yes", "sure", "ok", "yeah", "go ahead", "please"]):
+                    return True
     return False
 
 
@@ -154,7 +108,7 @@ def _check_smart_disambiguation(query: str, user_id: str, doc_count: int) -> str
         return None
 
     q_lower = query.lower()
-    if any(pattern in q_lower for pattern in AMBIGUOUS_FILE_PATTERNS):
+    if any(pattern in q_lower for pattern in ["which document", "which file", "what notes do i have"]):
         try:
             res = call_supabase(lambda: get_supabase()
                                 .table("documents")
@@ -177,11 +131,7 @@ def _check_smart_disambiguation(query: str, user_id: str, doc_count: int) -> str
 
 TOOL_SEARCH_DOCUMENTS = {
     "name": "tool_search_documents",
-    "description": (
-        "Search the student's uploaded documents for relevant content. "
-        "ALWAYS call this first when the student has uploaded materials, "
-        "unless they are asking about current events, weather, sports, or news."
-    ),
+    "description": "Search the student's uploaded documents for relevant content.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -191,7 +141,7 @@ TOOL_SEARCH_DOCUMENTS = {
             },
             "match_count": {
                 "type": "integer",
-                "description": "Number of chunks to retrieve. Default 10."
+                "description": "Number of chunks to retrieve. Default 6."
             },
         },
         "required": ["query"],
@@ -200,11 +150,7 @@ TOOL_SEARCH_DOCUMENTS = {
 
 TOOL_SEARCH_WEB = {
     "name": "tool_search_web",
-    "description": (
-        "Search the open web for current or general information. "
-        "Use ONLY for: current events, weather, sports, news, or when "
-        "document search returns no results."
-    ),
+    "description": "Search the open web for current or general information.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -261,14 +207,9 @@ async def tool_search_documents(
             },
         ).execute())
         chunks = result.data or []
-        relevant = [c for c in chunks if (
-            c.get("similarity") or 0) >= SIMILARITY_THRESHOLD][:3]
+        relevant = [c for c in chunks if (c.get("similarity") or 0) >= SIMILARITY_THRESHOLD]
         if scope_document_ids:
-            relevant = [c for c in relevant if c["document_id"]
-                        in scope_document_ids]
-        for c in relevant:
-            if "content" in c and isinstance(c["content"], str):
-                c["content"] = c["content"][:500]
+            relevant = [c for c in relevant if c["document_id"] in scope_document_ids]
         return relevant
 
     relevant = await asyncio.to_thread(_run)
@@ -288,12 +229,10 @@ async def tool_search_documents(
             try:
                 await asyncio.to_thread(_bump)
             except Exception as e:
-                logger.warning(
-                    f"last_accessed_at bump failed for user {user_id}: {e}")
+                logger.warning(f"last_accessed_at bump failed for user {user_id}: {e}")
 
         task = asyncio.create_task(_safe_bump())
-        task.add_done_callback(lambda t: t.exception()
-                               if t.exception() else None)
+        task.add_done_callback(lambda t: t.exception() if t.exception() else None)
 
     return {
         "chunks": relevant,
@@ -336,11 +275,12 @@ def _make_tool_executor(
             )
             for c in result["chunks"]:
                 doc_id = c["document_id"]
+                doc_title = c.get("document_title") or "Document"
                 if not any(s["document_id"] == doc_id for s in sources_out):
                     sources_out.append({
                         "document_id": doc_id,
-                        "document_title": c["document_title"],
-                        "snippet": c["content"][:200],
+                        "document_title": doc_title,
+                        "snippet": c.get("content", "")[:200],
                     })
             return result
         return await fn(
@@ -368,6 +308,7 @@ class AskRequest(BaseModel):
     scope_mode: str | None = None
     scope_document_ids: list[str] | None = None
     conversation_id: str | None = None
+    conversation_history: list[dict] | None = None
     has_doc_history: bool = False
 
 
@@ -388,6 +329,7 @@ async def _run_agent_turn(
     user_id: str,
     scope_mode: str | None,
     scope_document_ids: list[str] | None,
+    conversation_history: list[dict] | None = None,
     has_doc_history: bool = False,
 ) -> tuple[str, list[dict], list[dict], str]:
     trace: list[dict] = []
@@ -415,15 +357,18 @@ async def _run_agent_turn(
         tools = _tools_for_scope("auto", force_doc_search=True)
         mode_used = "grounded"
 
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": question},
-    ]
+    messages = [{"role": "system", "content": system}]
+    if conversation_history:
+        for msg in conversation_history[-10:]:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            content = msg.get("content", "")
+            if content:
+                messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": question})
 
     first = await asyncio.to_thread(generate_with_tools, messages, tools)
 
     if not first.function_calls:
-        # Active session fallback
         if doc_count > 0 and scope_mode != "web_only" and not _is_obviously_web_query(question):
             sources: list[dict] = []
             proactive_res = await tool_search_documents(question, user_id, scope_document_ids=scope_document_ids)
@@ -433,8 +378,8 @@ async def _run_agent_turn(
                     if not any(s["document_id"] == doc_id for s in sources):
                         sources.append({
                             "document_id": doc_id,
-                            "document_title": c["document_title"],
-                            "snippet": c["content"][:200],
+                            "document_title": c.get("document_title", "Document"),
+                            "snippet": c.get("content", "")[:200],
                         })
                 trace.append({"tool": "tool_search_documents", "status": "done", "summary": proactive_res["summary"]})
                 return first.text, sources, trace, "grounded"
@@ -446,8 +391,7 @@ async def _run_agent_turn(
     async def _run_call(call):
         trace.append({"tool": call.name, "status": "running"})
         result = await executor(call)
-        trace.append({"tool": call.name, "status": "done",
-                     "summary": result["summary"]})
+        trace.append({"tool": call.name, "status": "done", "summary": result["summary"]})
         return call.name, result
 
     results = await asyncio.gather(*(_run_call(c) for c in first.function_calls))
@@ -460,17 +404,20 @@ async def _run_agent_turn(
         elif name == "tool_search_web":
             web_result = result
 
-    if (doc_result and doc_result["count"] == 0 and
-        not web_result and
-            scope_mode != "documents_only"):
-        trace.append({"tool": "tool_search_web",
-                     "status": "running", "note": "auto-fallback"})
-        web_result = await tool_search_web(question, 5)
-        trace.append({"tool": "tool_search_web", "status": "done",
-                     "summary": web_result["summary"]})
-        mode_used = "general"
-        results = list(results)
-        results.append(("tool_search_web", web_result))
+    if doc_result and doc_result["count"] == 0 and not web_result and scope_mode != "documents_only":
+        if _has_web_permission(question, conversation_history):
+            trace.append({"tool": "tool_search_web", "status": "running", "note": "user-consented-web-search"})
+            web_result = await tool_search_web(question, 5)
+            trace.append({"tool": "tool_search_web", "status": "done", "summary": web_result["summary"]})
+            mode_used = "general"
+            results = list(results)
+            results.append(("tool_search_web", web_result))
+        else:
+            prompt_permission = (
+                "I searched your uploaded study materials, but couldn't find information regarding this question. "
+                "Would you like me to search the web for you?"
+            )
+            return prompt_permission, [], trace, "grounded"
 
     from google.genai import types
     from app.services.gemini_client import _messages_to_contents
@@ -495,7 +442,7 @@ async def _run_agent_turn(
 @router.post("/ask", response_model=AskResponse)
 async def ask(req: AskRequest, user: CurrentUser = Depends(get_current_user)):
     answer, sources, trace, mode = await _run_agent_turn(
-        req.question, user.id, req.scope_mode, req.scope_document_ids, req.has_doc_history
+        req.question, user.id, req.scope_mode, req.scope_document_ids, req.conversation_history, req.has_doc_history
     )
     return AskResponse(
         answer=answer,
@@ -514,7 +461,6 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
         try:
             doc_count = await asyncio.to_thread(_count_user_documents, user.id)
 
-            # Smart Disambiguation Check
             disambig = _check_smart_disambiguation(req.question, user.id, doc_count)
             if disambig:
                 yield f"data: {json.dumps({'type': 'text', 'content': disambig})}\n\n"
@@ -522,12 +468,6 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                 return
 
             system = SYSTEM_PROMPT + (NO_DOCS_NUDGE if doc_count == 0 else "")
-
-            is_doc = _is_document_query(
-                req.question,
-                has_active_docs=(doc_count > 0),
-                has_doc_history=req.has_doc_history,
-            )
 
             if doc_count == 0:
                 tools = _tools_for_scope("web_only")
@@ -545,10 +485,14 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                 tools = _tools_for_scope("auto", force_doc_search=True)
                 mode_used = "grounded"
 
-            messages = [
-                {"role": "system", "content": system},
-                {"role": "user", "content": req.question},
-            ]
+            messages = [{"role": "system", "content": system}]
+            if req.conversation_history:
+                for msg in req.conversation_history[-10:]:
+                    role = "user" if msg.get("role") == "user" else "assistant"
+                    content = msg.get("content", "")
+                    if content:
+                        messages.append({"role": role, "content": content})
+            messages.append({"role": "user", "content": req.question})
 
             yield f"data: {json.dumps({'type': 'trace', 'step': 'thinking'})}\n\n"
 
@@ -560,12 +504,9 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                     trace.append(evt)
                 yield f"data: {json.dumps(evt)}\n\n"
 
-            doc_trace = [t for t in trace if t.get(
-                "tool") == "tool_search_documents"]
-            web_trace = [t for t in trace if t.get(
-                "tool") == "tool_search_web"]
+            doc_trace = [t for t in trace if t.get("tool") == "tool_search_documents"]
+            web_trace = [t for t in trace if t.get("tool") == "tool_search_web"]
 
-            # Active Session Proactive Fallback
             if doc_count > 0 and not doc_trace and not web_trace and req.scope_mode != "web_only" and not _is_obviously_web_query(req.question):
                 proactive_res = await tool_search_documents(req.question, user.id, scope_document_ids=req.scope_document_ids)
                 if proactive_res["chunks"]:
@@ -574,8 +515,8 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                         if not any(s["document_id"] == doc_id for s in sources):
                             sources.append({
                                 "document_id": doc_id,
-                                "document_title": c["document_title"],
-                                "snippet": c["content"][:200],
+                                "document_title": c.get("document_title", "Document"),
+                                "snippet": c.get("content", "")[:200],
                             })
                     trace.append({"tool": "tool_search_documents", "status": "done", "summary": proactive_res["summary"]})
 
@@ -585,21 +526,25 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
             )
 
             if doc_empty and not web_trace and req.scope_mode != "documents_only":
-                yield f"data: {json.dumps({'type': 'trace', 'step': 'Auto-fallback to web search'})}\n\n"
-                trace.append({"tool": "tool_search_web",
-                             "status": "running", "note": "auto-fallback"})
-                web_result = await tool_search_web(req.question, 5)
-                trace.append({"tool": "tool_search_web", "status": "done",
-                             "summary": web_result["summary"]})
-                mode_used = "general"
+                if _has_web_permission(req.question, req.conversation_history):
+                    yield f"data: {json.dumps({'type': 'trace', 'step': 'Searching web with user permission'})}\n\n"
+                    trace.append({"tool": "tool_search_web", "status": "running", "note": "user-consented-web-search"})
+                    web_result = await tool_search_web(req.question, 5)
+                    trace.append({"tool": "tool_search_web", "status": "done", "summary": web_result["summary"]})
+                    mode_used = "general"
 
-                from app.services.gemini_client import async_stream_text
-                fallback_prompt = f"{system}\n\nThe user's question: {req.question}\n\nWeb search results: {json.dumps(web_result['results'][:3])}\n\nProvide a helpful answer based on these web results."
-                async for chunk in async_stream_text(fallback_prompt):
-                    yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+                    from app.services.gemini_client import async_stream_text
+                    fallback_prompt = f"{system}\n\nThe user's question: {req.question}\n\nWeb search results: {json.dumps(web_result['results'][:3])}\n\nProvide a helpful answer based on these web results."
+                    async for chunk in async_stream_text(fallback_prompt):
+                        yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+                else:
+                    no_match_text = (
+                        "I searched your uploaded study materials, but couldn't find information regarding this question. "
+                        "Would you like me to search the web for you?"
+                    )
+                    yield f"data: {json.dumps({'type': 'text', 'content': no_match_text})}\n\n"
 
-            tools_used = {t["tool"]
-                          for t in trace if t.get("status") == "done"}
+            tools_used = {t["tool"] for t in trace if t.get("status") == "done"}
             has_docs = len(sources) > 0
             has_web = "tool_search_web" in tools_used
 

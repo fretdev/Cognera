@@ -1,16 +1,5 @@
 "use client";
 
-/**
- * Cognera — ChatPanel (Production-Patched Frontend)
- * ==================================================
- * Fixes applied:
- * - H-001: Correctly reads and displays mode from done event
- * - L-001: Defensive JSON.parse with graceful skip on malformed data
- * - L-002: Automatic retry with exponential backoff for transient failures
- * - M-002: Tiered timeout UX (8s/15s/25s) with progressive feedback
- * - Timeout cancellation when first chunk arrives
- */
-
 import {
   useCallback, useEffect, useRef, useState,
 } from "react";
@@ -38,7 +27,7 @@ type Msg    = {
 
 const API_URL         = process.env.NEXT_PUBLIC_API_URL!;
 const CONTEXT_WINDOW  = 6;
-const CHARS_PER_FRAME = 5;
+const CHARS_PER_FRAME = 6;
 const BOTTOM_THRESHOLD = 80;
 
 const ACCEPTED_FILES = ".pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.csv,.markdown";
@@ -162,7 +151,9 @@ export default function ChatPanel({
     if (rafRef.current) return;
     function tick() {
       if (typeQueueRef.current.length > 0) {
-        const batch = typeQueueRef.current.splice(0, CHARS_PER_FRAME).join("");
+        // Fast adaptive catch-up to prevent long response lag
+        const batchSize = typeQueueRef.current.length > 30 ? 16 : CHARS_PER_FRAME;
+        const batch = typeQueueRef.current.splice(0, batchSize).join("");
         displayedRef.current += batch;
         const snap = displayedRef.current;
         setMessages(prev => {
@@ -282,41 +273,37 @@ export default function ChatPanel({
     }
 
     setLoading(true);
-    setThinkingStatus("Thinking...");
+    setThinkingStatus("Analyzing context & searching notes…");
     firstChunkReceived.current = false;
 
     const controller = new AbortController();
     abortRef.current = controller;
 
-    // FIX M-002: Tiered timeout with progressive UX feedback
-    // 8s: Still thinking
+    // UX Progress feedback
     progressTimeoutRef.current = setTimeout(() => {
       if (!firstChunkReceived.current) {
-        setThinkingStatus("Still thinking... (this may take a moment)");
+        setThinkingStatus("Searching documents & generating answer…");
       }
-    }, 8000);
+    }, 6000);
 
-    // 15s: Taking longer than usual
-    const longWaitTimeout = setTimeout(() => {
-      if (!firstChunkReceived.current) {
-        setThinkingStatus("Taking longer than usual. Working on it...");
-      }
-    }, 15000);
-
-    // 25s: Hard abort
+    // 45s hard abort
     timeoutRef.current = setTimeout(() => {
       controller.abort();
       setMessages(prev => [...prev.slice(0, -1), {
-        role: "assistant", content: "Request timed out. Please try again.", isError: true,
+        role: "assistant", content: "Request timed out. Please try asking again.", isError: true,
       }]);
       unlockUI();
-    }, 25_000);
+    }, 45_000);
+
+    const historyPayload = messages.slice(-10).map(m => ({
+      role: m.role,
+      content: m.content,
+    }));
 
     const hasDocHistory = messages.some(
       m => m.mode === "grounded" || m.mode === "hybrid" || (m.sources && m.sources.length > 0)
     );
 
-    // FIX L-002: Automatic retry with exponential backoff
     let attempt = 0;
     const maxAttempts = 2;
     let streamRes: Response | null = null;
@@ -331,13 +318,16 @@ export default function ChatPanel({
 
         const res = await fetch(`${API_URL}/chat/stream`, {
           method: "POST", headers,
-          body: JSON.stringify({ question: currentQuestion, has_doc_history: hasDocHistory }),
+          body: JSON.stringify({
+            question: currentQuestion,
+            conversation_history: historyPayload,
+            has_doc_history: hasDocHistory,
+          }),
           signal: controller.signal,
         });
 
         if (!res.ok) {
           const errText = await res.text();
-          // Retry on 5xx errors
           if (res.status >= 500 && attempt < maxAttempts) {
             await new Promise(r => setTimeout(r, 1000 * attempt));
             continue;
@@ -346,12 +336,10 @@ export default function ChatPanel({
         }
 
         streamRes = res;
-        // Request succeeded — clear retry state
         break;
 
       } catch (err) {
         if (attempt >= maxAttempts) throw err;
-        // Only retry on network/5xx errors, not 4xx
         const msg = (err as Error).message || "";
         if (!msg.includes("429") && !msg.includes("403") && !msg.includes("401")) {
           await new Promise(r => setTimeout(r, 1000 * attempt));
@@ -365,7 +353,6 @@ export default function ChatPanel({
       throw new Error("Failed to connect to chat stream.");
     }
 
-    // Now process the stream
     try {
       displayedRef.current = "";
       typeQueueRef.current = [];
@@ -392,7 +379,6 @@ export default function ChatPanel({
           const jsonString = line.slice(6).trim();
           if (!jsonString) continue;
 
-          // FIX L-001: Defensive JSON.parse
           let ev: any;
           try {
             ev = JSON.parse(jsonString);
@@ -409,14 +395,8 @@ export default function ChatPanel({
           if (ev.type === "trace") {
             if (!firstChunkReceived.current) {
               firstChunkReceived.current = true;
-              if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-              }
-              if (progressTimeoutRef.current) {
-                clearTimeout(progressTimeoutRef.current);
-                progressTimeoutRef.current = null;
-              }
+              if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+              if (progressTimeoutRef.current) { clearTimeout(progressTimeoutRef.current); progressTimeoutRef.current = null; }
             }
             const stepText = ev.step || ev.content || ev.message || "";
             if (stepText) setThinkingStatus(stepText);
@@ -425,17 +405,10 @@ export default function ChatPanel({
           const chunkText = ev.text || ev.content || ev.message || "";
 
           if (ev.type === "text" && typeof chunkText === "string" && chunkText.length > 0) {
-            // FIX M-002: Cancel timeout when first chunk arrives
             if (!firstChunkReceived.current) {
               firstChunkReceived.current = true;
-              if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-              }
-              if (progressTimeoutRef.current) {
-                clearTimeout(progressTimeoutRef.current);
-                progressTimeoutRef.current = null;
-              }
+              if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+              if (progressTimeoutRef.current) { clearTimeout(progressTimeoutRef.current); progressTimeoutRef.current = null; }
             }
             setThinkingStatus("");
             fullText += chunkText;
@@ -443,7 +416,6 @@ export default function ChatPanel({
           }
           if (ev.type === "done") {
             finalSources = ev.sources || [];
-            // FIX H-001: Read mode from done event
             finalMode = ev.mode || "general";
             setCurrentMode(finalMode);
           }
@@ -458,70 +430,74 @@ export default function ChatPanel({
       stopTypewriter();
 
       setMessages(prev => {
-        const last = prev[prev.length - 1];
-        if (!last || last.role !== "assistant") return prev;
-        return [...prev.slice(0, -1), { ...last, content: fullText, streaming: false, sources: finalSources, mode: finalMode }];
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (last && last.role === "assistant") {
+          copy[copy.length - 1] = {
+            ...last,
+            content: fullText || displayedRef.current,
+            sources: finalSources,
+            mode: finalMode,
+            streaming: false,
+          };
+        }
+        return copy;
       });
 
-      if (pinnedRef.current) requestAnimationFrame(() => scrollToBottom());
-      await persistMessages(currentQuestion, fullText, finalSources, finalMode);
+      await persistMessages(currentQuestion, fullText || displayedRef.current, finalSources, finalMode);
 
-      // Clear the long wait timeout
-      clearTimeout(longWaitTimeout);
+    } catch (err: unknown) {
+      if ((err as Error).name === "AbortError") return;
+      const is429 = (err as Error).message === "429" || (err as Error).message?.includes("429");
 
-    } catch (err) {
-      // ... existing error handling ...
-      clearTimeout(longWaitTimeout);
-      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
-      if (progressTimeoutRef.current) { clearTimeout(progressTimeoutRef.current); progressTimeoutRef.current = null; }
-
-      const name = (err as Error).name;
-      const msg  = (err as Error).message || "";
-
-      if (name === "AbortError") {
-        setInput(currentQuestion);
-        requestAnimationFrame(autosize);
-        return;
-      }
-
-      let errorText = "We are currently experiencing heavy traffic. Please wait a moment before trying again.";
-      if (msg.includes("429") || msg.includes("quota") || msg.includes("RATE_LIMIT") || msg.includes("rate limit") || msg.includes("busy")) {
-        errorText = "AI quota temporarily busy. Please wait a moment.";
-      } else if (msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("high demand")) {
-        errorText = "The AI model is temporarily busy handling high demand. Please try again shortly.";
-      }
+      const errText = is429
+        ? "AI service is temporarily busy. Please wait a few seconds and try asking again."
+        : `An error occurred: ${(err as Error).message || "Unknown error"}`;
 
       setMessages(prev => {
-        const base = prev[prev.length - 1]?.streaming ? prev.slice(0, -1) : prev;
-        return [...base, { role: "assistant", content: errorText, isError: true }];
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && last.streaming) {
+          return [...prev.slice(0, -1), { role: "assistant", content: errText, isError: true }];
+        }
+        return [...prev, { role: "assistant", content: errText, isError: true }];
       });
-      setInput(currentQuestion);
-      requestAnimationFrame(autosize);
+
     } finally {
       unlockUI();
     }
   }
 
-  async function handleSend(e: React.FormEvent) {
+  function handleSend(e: React.FormEvent) {
     e.preventDefault();
-    const q = input.trim();
-    if (!q && !attachedFile) return;
     if (editingIndex !== null) {
+      const q = input;
       const idx = editingIndex;
       setEditingIndex(null);
-      await sendQuestion(q, idx);
+      sendQuestion(q, idx);
     } else {
-      await sendQuestion(q);
+      sendQuestion(input);
     }
   }
 
-  function handleStop() { abortRef.current?.abort(); }
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
+      e.preventDefault();
+      handleSend(e);
+    }
+  }
 
-  function startEdit(i: number) {
-    if (messages[i].role !== "user") return;
-    setEditingIndex(i);
-    setInput(messages[i].content);
-    requestAnimationFrame(() => { autosize(); textareaRef.current?.focus(); });
+  function handleStop() {
+    abortRef.current?.abort();
+    unlockUI();
+  }
+
+  function startEdit(index: number) {
+    setEditingIndex(index);
+    setInput(messages[index].content);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      autosize();
+    });
   }
 
   function cancelEdit() {
@@ -530,73 +506,34 @@ export default function ChatPanel({
     requestAnimationFrame(autosize);
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); handleSend(e); return; }
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(e); return; }
-    if (e.key === "Escape") { editingIndex !== null ? cancelEdit() : textareaRef.current?.blur(); }
-  }
-
   /* ── Render ──────────────────────────────────────────────────────────── */
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg)", position: "relative" }}>
-
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative", overflow: "hidden" }}>
       {/* Messages */}
-      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
-        <div style={{ maxWidth: "700px", margin: "0 auto", padding: "40px 20px 24px" }}>
-
-          {messages.length === 0 ? (
-            <WelcomeView onQuickStart={p => {
-              setInput(p);
-              requestAnimationFrame(() => { autosize(); textareaRef.current?.focus(); });
-            }} />
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-              <span style={{ fontSize: "12px", color: "var(--t3)" }}>
-                Using the last {CONTEXT_WINDOW} messages for context
-              </span>
-              {currentMode && (
-                <div style={{
-                  display: "flex", alignItems: "center", gap: "5px",
-                  borderRadius: "9999px", padding: "3px 10px", fontSize: "11.5px",
-                  background: currentMode === "grounded" ? "var(--accent-soft)" : currentMode === "hybrid" ? "rgba(147, 51, 234, 0.08)" : "rgba(62,207,142,0.08)",
-                  color:      currentMode === "grounded" ? "var(--accent)"      : currentMode === "hybrid" ? "rgb(147, 51, 234)" : "var(--green)",
-                  border:     `1px solid ${currentMode === "grounded" ? "var(--accent-border)" : currentMode === "hybrid" ? "rgba(147, 51, 234, 0.2)" : "rgba(62,207,142,0.2)"}`,
-                }}>
-                  {currentMode === "grounded"
-                    ? <><BookOpen size={10} strokeWidth={2} />Source Grounded</>
-                    : currentMode === "hybrid"
-                    ? <><Zap size={10} strokeWidth={2} />Hybrid Search</>
-                    : <><Zap size={10} strokeWidth={2} />Web Search</>}
-                </div>
-              )}
-            </div>
-          )}
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex: 1, overflowY: "auto", position: "relative" }}>
+        <div style={{ maxWidth: "700px", margin: "0 auto", padding: "24px 16px 32px" }}>
+          {messages.length === 0 && <WelcomeView onQuickStart={(q: string) => sendQuestion(q)} />}
 
           <div style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
             {messages.map((m, i) => {
               const isLatest = i === messages.length - 1;
               if (m.role === "user") {
                 return (
-                  <div key={i} className="group" style={{
-                    display: "flex", justifyContent: "flex-end",
-                    animation: isLatest ? "msgIn 0.28s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
-                  }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: "6px", maxWidth: "80%" }}>
-                      <button type="button" onClick={() => startEdit(i)} aria-label="Edit"
-                        className="opacity-0 group-hover:opacity-100"
-                        style={{ marginTop: "8px", padding: "4px", background: "none", border: "none", cursor: "pointer", color: "var(--t3)", borderRadius: "6px", transition: "opacity 0.15s, color 0.15s", flexShrink: 0 }}
-                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "var(--t1)"}
-                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "var(--t3)"}>
-                        <Pencil size={13} strokeWidth={1.75} />
-                      </button>
-                      <div style={{
-                        background: "var(--s2)", color: "var(--t1)",
-                        border: "1px solid var(--b1)",
-                        borderRadius: "18px 18px 4px 18px",
-                        padding: "10px 16px", fontSize: "15px", lineHeight: "1.65",
-                        wordBreak: "break-word", whiteSpace: "pre-wrap",
-                      }}>
+                  <div key={i} className="group" style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <div style={{ position: "relative", maxWidth: "82%" }}>
+                      <div className="user-msg-bubble">
                         {m.content}
+                      </div>
+                      <div style={{ display: "flex", justifySelf: "flex-end", marginTop: "4px", gap: "4px" }}>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(i)}
+                          aria-label="Edit message"
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-[var(--t3)] hover:text-[var(--t1)] rounded"
+                          style={{ background: "none", border: "none", cursor: "pointer" }}
+                        >
+                          <Pencil size={12} strokeWidth={1.75} />
+                        </button>
                       </div>
                     </div>
                   </div>

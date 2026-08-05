@@ -1,29 +1,38 @@
 """
-Shared retrieval helper for flashcard/quiz generation: pulls all chunks
-belonging to the selected documents (ordered, so context reads naturally),
-and caps total length so we don't blow past Gemini's context window or
-generate an enormous bill on a huge multi-document selection.
+Shared retrieval helper for flashcard/quiz generation: pulls chunks
+belonging to the selected documents evenly across documents (so every selected
+file is represented), and caps total length to stay within model windows.
 """
 from app.db.supabase_client import get_supabase
 
-MAX_CONTEXT_CHARS = 24_000  # ~6k tokens — plenty for 5-15 generated items
+MAX_CONTEXT_CHARS = 32_000  # ~8k tokens — plenty for flashcards & quizzes
 
 
 def get_combined_context(user_id: str, document_ids: list[str]) -> str:
     supabase = get_supabase()
 
-    result = (
-        supabase.table("document_chunks")
-        .select("document_id, content, chunk_index")
-        .eq("user_id", user_id)
-        .in_("document_id", document_ids)
-        .order("chunk_index")
-        .execute()
-    )
-
-    chunks = result.data or []
-    if not chunks:
+    if not document_ids:
         return ""
 
-    combined = "\n\n".join(c["content"] for c in chunks)
+    # Fetch chunks per document evenly so multi-document selections get fair representation
+    per_doc_limit = max(10, 50 // len(document_ids))
+    all_chunks = []
+
+    for doc_id in document_ids:
+        res = (
+            supabase.table("document_chunks")
+            .select("document_id, content, chunk_index")
+            .eq("user_id", user_id)
+            .eq("document_id", doc_id)
+            .order("chunk_index")
+            .limit(per_doc_limit)
+            .execute()
+        )
+        if res.data:
+            all_chunks.extend(res.data)
+
+    if not all_chunks:
+        return ""
+
+    combined = "\n\n".join(c["content"] for c in all_chunks)
     return combined[:MAX_CONTEXT_CHARS]
