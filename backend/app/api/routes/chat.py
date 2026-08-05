@@ -371,22 +371,6 @@ async def _run_agent_turn(
 
     system = SYSTEM_PROMPT + (NO_DOCS_NUDGE if doc_count == 0 else "")
 
-    if doc_count == 0:
-        tools = _tools_for_scope("web_only")
-        mode_used = "general"
-    elif scope_mode == "documents_only":
-        tools = _tools_for_scope("documents_only")
-        mode_used = "grounded"
-    elif scope_mode == "web_only":
-        tools = _tools_for_scope("web_only")
-        mode_used = "general"
-    elif _is_obviously_web_query(question):
-        tools = _tools_for_scope("web_only")
-        mode_used = "general"
-    else:
-        tools = _tools_for_scope(scope_mode)
-        mode_used = "grounded" if _is_document_signal_query(question) else "general"
-
     messages = [{"role": "system", "content": system}]
     if conversation_history:
         for msg in conversation_history[-10:]:
@@ -396,64 +380,8 @@ async def _run_agent_turn(
                 messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": question})
 
-    first = await asyncio.to_thread(generate_with_tools, messages, tools)
-
-    if not first.function_calls:
-        return first.text, [], trace, mode_used
-
-    sources: list[dict] = []
-    executor = _make_tool_executor(user_id, scope_document_ids, sources)
-
-    async def _run_call(call):
-        trace.append({"tool": call.name, "status": "running"})
-        result = await executor(call)
-        trace.append({"tool": call.name, "status": "done", "summary": result["summary"]})
-        return call.name, result
-
-    results = await asyncio.gather(*(_run_call(c) for c in first.function_calls))
-
-    doc_result = None
-    web_result = None
-    for name, result in results:
-        if name == "tool_search_documents":
-            doc_result = result
-        elif name == "tool_search_web":
-            web_result = result
-
-    # Only ask for web search permission if tool_search_documents WAS explicitly called and returned 0 results
-    if doc_result and doc_result["count"] == 0 and not web_result and scope_mode != "documents_only":
-        if _has_web_permission(question, conversation_history):
-            trace.append({"tool": "tool_search_web", "status": "running", "note": "user-consented-web-search"})
-            web_result = await tool_search_web(question, 5)
-            trace.append({"tool": "tool_search_web", "status": "done", "summary": web_result["summary"]})
-            mode_used = "general"
-            results = list(results)
-            results.append(("tool_search_web", web_result))
-        else:
-            prompt_permission = (
-                "I searched your uploaded study materials, but couldn't find information regarding this question. "
-                "Would you like me to search the web for you?"
-            )
-            return prompt_permission, [], trace, "grounded"
-
-    from google.genai import types
-    from app.services.gemini_client import _messages_to_contents
-
-    sdk_msgs = _messages_to_contents(messages)
-    if first.model_content:
-        sdk_msgs.append(first.model_content)
-    else:
-        fc_parts = [types.Part.from_function_call(name=c.name, args=c.args) for c in first.function_calls]
-        sdk_msgs.append(types.Content(role="model", parts=fc_parts))
-
-    func_parts = [
-        types.Part.from_function_response(name=name, response=result)
-        for name, result in results
-    ]
-    sdk_msgs.append(types.Content(role="user", parts=func_parts))
-
-    final = await asyncio.to_thread(generate_with_tools, sdk_msgs, tools)
-    return final.text, sources, trace, mode_used
+    first = await asyncio.to_thread(generate_with_tools, messages, None)
+    return first.text or "", [], trace, "general"
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -485,6 +413,7 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                 return
 
             system = SYSTEM_PROMPT + (NO_DOCS_NUDGE if doc_count == 0 else "")
+            mode_used = "general"
 
             should_search_docs = (
                 doc_count > 0 and
@@ -552,22 +481,6 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                     )
                     trace.append({"tool": "tool_search_web", "status": "done", "summary": f"Found {len(items)} web result(s)."})
 
-            if doc_count == 0:
-                tools = _tools_for_scope("web_only")
-                mode_used = "general"
-            elif req.scope_mode == "documents_only":
-                tools = _tools_for_scope("documents_only")
-                mode_used = "grounded"
-            elif req.scope_mode == "web_only":
-                tools = _tools_for_scope("web_only")
-                mode_used = "general"
-            elif _is_obviously_web_query(req.question):
-                tools = _tools_for_scope("web_only")
-                mode_used = "general"
-            else:
-                tools = _tools_for_scope(req.scope_mode)
-                mode_used = "grounded" if _is_document_signal_query(req.question) else "general"
-
             messages = [{"role": "system", "content": system}]
             if req.conversation_history:
                 for msg in req.conversation_history[-10:]:
@@ -579,11 +492,9 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
 
             yield f"data: {json.dumps({'type': 'trace', 'step': 'thinking'})}\n\n"
 
-            executor = _make_tool_executor(
-                user.id, req.scope_document_ids, sources)
-
+            # Pass tools=None because pre-retrieval has already injected document/web context into system prompt!
             async for evt in stream_multi_provider_text(
-                messages, tools=tools, execute_tool=executor, preferred_model=req.preferred_model
+                messages, tools=None, execute_tool=None, preferred_model=req.preferred_model
             ):
                 if evt["type"] == "trace":
                     trace.append(evt)
