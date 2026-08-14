@@ -309,10 +309,14 @@ export default function ChatPanel({
     const controller = new AbortController();
     abortRef.current = controller;
 
-    // UX Progress feedback
     progressTimeoutRef.current = setTimeout(() => {
       if (!firstChunkReceived.current) {
-        setThinkingStatus("Searching documents & generating answer…");
+        const defaultStatus = webSearchEnabled
+          ? "Searching the web & generating answer…"
+          : selectedDocId
+          ? "Searching document & generating answer…"
+          : "Thinking & generating answer…";
+        setThinkingStatus(defaultStatus);
       }
     }, 6000);
 

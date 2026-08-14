@@ -386,12 +386,7 @@ async def generate_stream(messages, tools=None, execute_tool=None):
                             continue
                         except Exception:
                             pass
-                    yield {
-                        "type": "error",
-                        "message": "AI quota is temporarily busy. Please wait a few seconds and try again.",
-                        "code": "RATE_LIMIT",
-                    }
-                    return
+                    raise RuntimeError("Gemini AI quota temporarily exhausted")
                 raise
 
             if is_done:
