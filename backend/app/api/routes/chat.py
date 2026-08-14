@@ -35,18 +35,22 @@ CONTEXT_CHUNKS = 6
 
 SYSTEM_PROMPT = """You are Cognera, an AI study assistant. Your job is to HELP students learn accurately, quickly, and directly.
 
-## TOOL SELECTION RULES:
+## HOW TO ANSWER:
 
 1. **General Knowledge / Math / Trivia / Writing / Logic**:
-   Answer DIRECTLY from your knowledge base. Do NOT call tools for basic facts, math, geography (e.g. "What's the capital of France", "2+2"), grammar, or general explanations.
+   Answer DIRECTLY and completely. Never say you cannot answer or suggest the user search elsewhere.
 
-2. **Uploaded Documents / Course Notes / Homework**:
-   Call `tool_search_documents` when the user asks about their notes, uploaded files, course materials, lectures, or specific study topics.
+2. **Uploaded Documents / Course Notes**:
+   When document context is provided below, use it to answer accurately and cite sources.
 
-3. **Current Events / News / Explicit Web Search**:
-   Call `tool_search_web` ONLY for breaking news, current dates, weather, live stock/sports data, or when the user explicitly requests web search.
+3. **Current Events / Real-Time Data**:
+   When web search results are provided below, use them to answer accurately with markdown source links.
 
-## RESPONSE STYLE:
+## CRITICAL RULES:
+- NEVER mention internal tool names, function names, or suggest calling any tool.
+- NEVER say "I'm unable to access real-time information" or "Would you like me to search".
+- ALWAYS answer directly using whatever context is provided to you.
+- If document or web context is provided, use it. If not, answer from your training knowledge.
 - Direct, academic, clear, and concise. No conversational fluff.
 - When citing documents: (Source: Document Title)
 - Use clean Markdown formatting.
@@ -59,15 +63,33 @@ NO_DOCS_NUDGE = (
 )
 
 WEB_ONLY_KEYWORDS = {
+    # News & time
     "news", "yesterday", "today", "last week", "last month", "recently",
-    "breaking", "headlines", "current events",
-    "weather", "temperature", "forecast", "rain", "snow", "sunny",
+    "breaking", "headlines", "current events", "latest", "update",
+    # Weather
+    "weather", "temperature", "forecast", "rain", "snow", "sunny", "humidity",
+    # Sports
     "score", "won", "lost", "match", "game", "tournament", "championship",
-    "world cup", "super bowl", "olympics",
+    "world cup", "super bowl", "olympics", "premier league", "la liga",
+    # Finance
     "stock price", "stock market", "bitcoin", "crypto", "trading",
+    "price of", "how much does", "exchange rate", "naira", "dollar rate",
+    # People & celebrity
     "died", "passed away", "married", "divorced", "celebrity",
+    # Politics & elections
+    "election", "governor", "president", "senator", "minister",
+    "inaugurated", "sworn in", "political", "campaign", "ballot",
+    "voted", "polling", "primary", "running mate", "vice president",
+    # Scheduling & events
+    "taking place", "scheduled", "when is", "happening", "date of",
+    "deadline", "registration", "admission", "result", "jamb", "waec", "neco",
+    # Explicit web requests
     "search google", "look up online", "what does the internet say",
-    "latest version", "current release", "search web", "web search",
+    "search the web", "search web", "web search", "find online",
+    "look up", "google", "current release", "latest version",
+    # General current-affairs triggers
+    "right now", "presently", "at the moment", "this week", "this month",
+    "current", "ongoing", "trending", "viral",
 }
 
 DOC_SIGNALS = {
@@ -89,8 +111,23 @@ def _is_obviously_web_query(query: str) -> bool:
     for keyword in WEB_ONLY_KEYWORDS:
         if keyword in q_lower:
             return True
-    if any(word in q_lower for word in ["2025", "2026", "this year", "last year"]):
+    if any(word in q_lower for word in ["2024", "2025", "2026", "2027", "this year", "last year"]):
         return True
+    # Pattern-based detection for real-time questions
+    import re
+    web_patterns = [
+        r"\bwhen is\b",           # "When is the election"
+        r"\bwho is the current\b", # "Who is the current president"
+        r"\bwho won\b",           # "Who won the match"
+        r"\bhow much\b.*\bcost\b", # "How much does X cost"
+        r"\bis .+ open\b",        # "Is the store open"
+        r"\bwhat time\b",         # "What time does X start"
+        r"\bwhere can i\b",       # "Where can I buy"
+        r"\bhow to get to\b",     # "How to get to X"
+    ]
+    for pattern in web_patterns:
+        if re.search(pattern, q_lower):
+            return True
     return False
 
 
