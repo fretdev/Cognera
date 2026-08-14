@@ -274,7 +274,10 @@ async def tool_search_documents(
 
 
 async def tool_search_web(query: str, num_results: int = 5) -> dict[str, Any]:
+    from app.services.web_search_helper import perform_free_web_search
     results = await asyncio.to_thread(web_search, query, num_results)
+    if not results:
+        results = await asyncio.to_thread(perform_free_web_search, query, num_results)
     return {
         "results": results,
         "count": len(results),

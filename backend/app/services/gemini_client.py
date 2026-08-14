@@ -456,21 +456,21 @@ async def generate_stream(messages, tools=None, execute_tool=None):
 # ---------------------------------------------------------------------------
 
 def web_search(query: str, num_results: int = 5) -> list[dict]:
-    client = get_gemini_client()
-
-    def _call():
-        return client.models.generate_content(
-            model=settings.gemini_chat_model,
-            contents=f"Search the web for: {query}",
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            ),
-        )
+    from app.services.web_search_helper import perform_free_web_search
+    results = []
 
     try:
-        response = _call_with_retry_sync(_call)
-        results = []
+        client = get_gemini_client()
+        def _call():
+            return client.models.generate_content(
+                model=settings.gemini_chat_model,
+                contents=f"Search the web for: {query}",
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                ),
+            )
 
+        response = _call_with_retry_sync(_call)
         if response and response.candidates and response.candidates[0].grounding_metadata:
             metadata = response.candidates[0].grounding_metadata
             for chunk in getattr(metadata, "grounding_chunks", []):
@@ -481,11 +481,13 @@ def web_search(query: str, num_results: int = 5) -> list[dict]:
                         "uri": getattr(web, "uri", "") or "",
                         "snippet": getattr(web, "snippet", "") or "",
                     })
-
-        return results[:num_results]
     except Exception as err:
-        logger.warning(f"web_search exception caught gracefully: {err}")
-        return []
+        logger.warning(f"Gemini web_search exception caught gracefully: {err}")
+
+    if not results:
+        results = perform_free_web_search(query, num_results)
+
+    return results[:num_results]
 
 
 async def web_search_async(query: str, num_results: int = 5) -> list[dict]:
