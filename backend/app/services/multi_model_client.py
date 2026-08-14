@@ -136,6 +136,7 @@ async def stream_groq_qwen(
                             last_err = ValueError(f"Groq Error {response.status_code}")
                             break  # try next model variant
 
+                        _acc = ""
                         async for line in response.aiter_lines():
                             line = line.strip()
                             if line.startswith("data: "):
@@ -147,6 +148,15 @@ async def stream_groq_qwen(
                                     delta = chunk_data.get("choices", [{}])[0].get("delta", {})
                                     text = delta.get("content", "")
                                     if text:
+                                        _acc += text
+                                        # Repetition loop detection
+                                        if len(_acc) > 150:
+                                            tail = _acc[-300:]
+                                            for pl in range(20, 50):
+                                                if len(tail) >= pl * 3 and tail.count(tail[-pl:]) >= 3:
+                                                    logger.warning("Repetition loop detected in Groq output, truncating.")
+                                                    yield {"type": "text", "content": "\n\n*(Response truncated — the AI entered a repetition loop.)*"}
+                                                    return
                                         yield {"type": "text", "content": text}
                                 except Exception:
                                     continue

@@ -363,6 +363,22 @@ async def generate_stream(messages, tools=None, execute_tool=None):
 
     rate_limit_attempts = 0
     MAX_429_RETRIES = 3
+    _accumulated_text = ""  # Track full output for repetition detection
+
+    def _is_repetition_loop(text: str) -> bool:
+        """Detect if the model is stuck in a repetition loop."""
+        if len(text) < 100:
+            return False
+        # Check last 200 chars for repeated phrases
+        tail = text[-300:]
+        # Find any phrase of 20+ chars repeated 3+ times
+        for phrase_len in range(20, 60):
+            if len(tail) < phrase_len * 3:
+                continue
+            last_phrase = tail[-phrase_len:]
+            if tail.count(last_phrase) >= 3:
+                return True
+        return False
 
     for turn in range(MAX_TOOL_TURNS):
         tool_calls = []
@@ -378,7 +394,7 @@ async def generate_stream(messages, tools=None, execute_tool=None):
                 if status_code == 429 or "quota" in str(e).lower():
                     rate_limit_attempts += 1
                     if rate_limit_attempts <= MAX_429_RETRIES:
-                        yield {"type": "trace", "step": f"AI capacity busy. Retrying ({rate_limit_attempts}/{MAX_429_RETRIES})…"}
+                        yield {"type": "trace", "step": f"AI capacity busy. Retrying ({rate_limit_attempts}/{MAX_429_RETRIES})..."}
                         await asyncio.sleep(2.5 * rate_limit_attempts)
                         try:
                             response_stream = await _get_stream(sdk_contents, tools, system_instruction)
@@ -401,6 +417,12 @@ async def generate_stream(messages, tools=None, execute_tool=None):
                 for part in candidate.content.parts:
                     all_model_parts.append(part)
                     if part.text:
+                        _accumulated_text += part.text
+                        # Detect and break repetition loops
+                        if _is_repetition_loop(_accumulated_text):
+                            logger.warning("Repetition loop detected in Gemini output, truncating.")
+                            yield {"type": "text", "content": "\n\n*(Response truncated — the AI entered a repetition loop.)*"}
+                            return
                         yield {"type": "text", "content": part.text}
                     if part.function_call:
                         tool_calls.append(part.function_call)
@@ -443,7 +465,7 @@ async def generate_stream(messages, tools=None, execute_tool=None):
 
         response_stream = await _get_stream(sdk_contents, tools, system_instruction)
     else:
-        yield {"type": "error", "message": "Too many tool call turns. Please simplify your query."}
+        yield {"type": "text", "content": "I reached the maximum processing depth for this query. Please try rephrasing your question."}
 
 
 # ---------------------------------------------------------------------------

@@ -486,11 +486,7 @@ export default function ChatPanel({
 
     } catch (err: unknown) {
       if ((err as Error).name === "AbortError") return;
-      const is429 = (err as Error).message === "429" || (err as Error).message?.includes("429");
-
-      const errText = is429
-        ? "AI service is temporarily busy. Please wait a few seconds and try asking again."
-        : `An error occurred: ${(err as Error).message || "Unknown error"}`;
+      const errText = "I'm having trouble connecting right now. Please try again in a moment.";
 
       setMessages(prev => {
         const last = prev[prev.length - 1];
