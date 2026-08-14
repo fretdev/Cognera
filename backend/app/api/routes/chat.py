@@ -458,19 +458,22 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
             system = SYSTEM_PROMPT + (NO_DOCS_NUDGE if doc_count == 0 else "")
             mode_used = "general"
 
-            is_web_focused = (
-                req.scope_mode == "web_only" or
-                _is_obviously_web_query(req.question)
+            # ---------------------------------------------------------------
+            # ROUTING LOGIC (Flipped — Web search is the DEFAULT, not opt-in)
+            # ---------------------------------------------------------------
+            # If the user explicitly scoped to documents, or the query
+            # clearly references their uploaded notes → search documents.
+            # For ALL other queries → ALWAYS search the web so every question
+            # gets real-time context regardless of keywords.
+            # ---------------------------------------------------------------
+
+            is_doc_scoped = (
+                req.scope_mode == "documents_only" or
+                (req.scope_document_ids is not None and len(req.scope_document_ids) > 0) or
+                _is_document_signal_query(req.question)
             )
 
-            should_search_docs = (
-                doc_count > 0 and
-                not is_web_focused and (
-                    req.scope_mode == "documents_only" or
-                    (req.scope_document_ids is not None and len(req.scope_document_ids) > 0) or
-                    _is_document_signal_query(req.question)
-                )
-            )
+            should_search_docs = doc_count > 0 and is_doc_scoped
 
             if should_search_docs:
                 yield f"data: {json.dumps({'type': 'trace', 'step': 'Searching study notes…'})}\n\n"
@@ -503,10 +506,8 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
                     )
                     trace.append({"tool": "tool_search_documents", "status": "done", "summary": f"Retrieved {len(chunks)} document section(s)."})
 
-            should_search_web = (
-                req.scope_mode == "web_only" or
-                _is_obviously_web_query(req.question)
-            )
+            # Web search for ALL non-document-scoped queries (the default path)
+            should_search_web = not should_search_docs
 
             if should_search_web:
                 yield f"data: {json.dumps({'type': 'trace', 'step': 'Searching the web…'})}\n\n"
