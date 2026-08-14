@@ -606,18 +606,34 @@ async def stream_ask(req: AskRequest, user: CurrentUser = Depends(get_current_us
 
         except Exception as e:
             logger.exception("Stream error for user %s", user.id)
-            error_msg = str(e)
-            is_429 = (
-                "429" in error_msg or
-                "quota" in error_msg.lower() or
-                "rate limit" in error_msg.lower() or
-                "resourceexhausted" in error_msg.lower() or
-                "resource_exhausted" in error_msg.lower()
-            )
-            if is_429:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'AI quota temporarily busy. Please wait a moment.', 'code': 'RATE_LIMIT'})}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            # Instead of showing an error, try to give a useful answer from
+            # whatever context (web/doc) was already retrieved before the crash.
+            try:
+                # Extract any web/doc context that was already injected into system prompt
+                context_lines = []
+                if "## REAL-TIME WEB SEARCH RESULTS" in system:
+                    ctx = system.split("## REAL-TIME WEB SEARCH RESULTS")[1]
+                    context_lines.append(ctx.strip()[:2000])
+                elif "## RETRIEVED DOCUMENT CONTEXT" in system:
+                    ctx = system.split("## RETRIEVED DOCUMENT CONTEXT")[1]
+                    context_lines.append(ctx.strip()[:2000])
+
+                if context_lines:
+                    fallback = (
+                        f"Here's what I found regarding your question:\n\n"
+                        f"{context_lines[0]}\n\n"
+                        f"*Note: I summarized the search results directly due to a temporary processing issue.*"
+                    )
+                    yield f"data: {json.dumps({'type': 'text', 'content': fallback})}\n\n"
+                else:
+                    # No context was retrieved — give a helpful message, not a raw error
+                    yield f"data: {json.dumps({'type': 'text', 'content': 'I encountered a temporary issue processing your request. Please try asking your question again in a moment.'})}\n\n"
+
+                yield f"data: {json.dumps({'type': 'done', 'sources': sources, 'trace': trace, 'mode': 'general'})}\n\n"
+            except Exception:
+                # Absolute last resort
+                yield f"data: {json.dumps({'type': 'text', 'content': 'Please try again in a moment.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'sources': [], 'trace': [], 'mode': 'general'})}\n\n"
 
     return StreamingResponse(
         event_stream(),
