@@ -104,7 +104,15 @@ body {
   .t-hero { font-size: clamp(2.2rem, 10vw, 3rem) !important; }
   .t-h1   { font-size: clamp(1.5rem, 7vw, 2rem) !important; }
   .chat-prose { font-size: 14px; }
-  .chat-input-wrap textarea { font-size: 16px; }
+  .chat-input-wrap {
+    padding: 10px 12px 8px !important;
+    border-radius: 16px !important;
+  }
+  .chat-input-wrap textarea {
+    font-size: 16px !important;
+    min-height: 44px;
+    touch-action: manipulation;
+  }
 }
 
 [data-theme="dark"] body {
