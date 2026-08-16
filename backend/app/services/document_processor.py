@@ -1,8 +1,16 @@
 """
-Document text extraction — PDF, Word, PowerPoint, plain text, CSV, Markdown.
+Document text extraction — PDF, Word, PowerPoint, plain text, CSV, Markdown, Images.
 """
 import io
 import fitz  # PyMuPDF
+
+
+IMAGE_TYPES = {
+    "image/png", "image/jpeg", "image/jpg", "image/webp",
+    "image/gif", "image/bmp", "image/tiff",
+}
+
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff")
 
 
 def extract_text(file_bytes: bytes, content_type: str, filename: str = "") -> str:
@@ -23,6 +31,10 @@ def extract_text(file_bytes: bytes, content_type: str, filename: str = "") -> st
         "application/vnd.ms-powerpoint",
     ) or name.endswith((".pptx", ".ppt")):
         return _extract_pptx(file_bytes)
+
+    # Image OCR via Gemini Vision
+    if ct in IMAGE_TYPES or name.endswith(IMAGE_EXTENSIONS):
+        return _extract_image(file_bytes, ct or "image/png")
 
     if ct.startswith("text/") or name.endswith((".txt", ".md", ".csv", ".markdown")):
         return file_bytes.decode("utf-8", errors="replace")
@@ -62,6 +74,16 @@ def _extract_pptx(pptx_bytes: bytes) -> str:
         if len(texts) > 1:
             parts.append("\n".join(texts))
     return "\n\n".join(parts)
+
+
+def _extract_image(image_bytes: bytes, content_type: str) -> str:
+    """Extract text from an image using Gemini Vision (OCR).
+
+    Handles photos of handwritten notes, printed documents, screenshots,
+    diagrams with labels, and any image containing readable text.
+    """
+    from app.services.gemini_client import extract_image_text
+    return extract_image_text(image_bytes, content_type)
 
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:

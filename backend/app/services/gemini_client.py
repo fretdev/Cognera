@@ -226,6 +226,43 @@ async def embed_text_async(text: str) -> list[float]:
     return await asyncio.to_thread(embed_text, text)
 
 
+# ---------------------------------------------------------------------------
+# Image OCR via Gemini Vision
+# ---------------------------------------------------------------------------
+
+def extract_image_text(image_bytes: bytes, mime_type: str) -> str:
+    """Extract text from an image (photo of notes, screenshot, etc.) using Gemini Vision.
+
+    Supports: PNG, JPEG, WebP, GIF, BMP, TIFF.
+    No additional dependencies required — uses the existing Gemini API.
+    """
+    client = get_gemini_client()
+
+    def _call():
+        return client.models.generate_content(
+            model=settings.gemini_chat_model,
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                types.Part.from_text(text=(
+                    "You are an expert OCR system. Extract ALL text visible in this image "
+                    "accurately and completely. Include:\n"
+                    "- Printed text\n"
+                    "- Handwritten text (even if slightly messy)\n"
+                    "- Diagram labels and annotations\n"
+                    "- Table content (preserve structure with pipes | and newlines)\n"
+                    "- Mathematical formulas (use plain text notation)\n"
+                    "- Headers, footers, and page numbers\n\n"
+                    "Preserve the original structure, formatting, headings, and paragraph "
+                    "breaks as closely as possible. Return ONLY the extracted text with "
+                    "no commentary, preamble, or explanation."
+                )),
+            ],
+        )
+
+    result = _call_with_retry_sync(_call)
+    return result.text or ""
+
+
 def to_pgvector_literal(embedding: list[float]) -> str:
     return "[" + ",".join(str(x) for x in embedding) + "]"
 

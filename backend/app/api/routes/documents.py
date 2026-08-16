@@ -16,8 +16,15 @@ ALLOWED_TYPES = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "application/vnd.ms-powerpoint",
     "text/plain", "text/markdown", "text/csv", "text/x-markdown",
+    # Image types (OCR via Gemini Vision)
+    "image/png", "image/jpeg", "image/jpg", "image/webp",
+    "image/gif", "image/bmp", "image/tiff",
 }
-ALLOWED_EXT = {".pdf",".docx",".doc",".pptx",".ppt",".txt",".md",".csv",".markdown"}
+ALLOWED_EXT = {
+    ".pdf",".docx",".doc",".pptx",".ppt",".txt",".md",".csv",".markdown",
+    # Image extensions
+    ".png",".jpg",".jpeg",".webp",".gif",".bmp",".tiff",
+}
 
 
 @router.get("")
@@ -43,7 +50,7 @@ async def upload_document(
 
     if ct not in ALLOWED_TYPES and ext not in ALLOWED_EXT:
         raise HTTPException(status_code=400,
-            detail=f"Unsupported file type. Supported: PDF, Word, PowerPoint, plain text, CSV, Markdown.")
+            detail=f"Unsupported file type. Supported: PDF, Word, PowerPoint, Images (PNG/JPEG/WebP), plain text, CSV, Markdown.")
 
     data = await file.read()
     if len(data) > MAX_SIZE:
