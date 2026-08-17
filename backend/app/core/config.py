@@ -21,23 +21,13 @@ class Settings(BaseSettings):
     groq_api_keys: str = ""
     preferred_chat_provider: str = "auto"
 
-    cors_origins: str = "http://localhost:3000,https://cognera-8usb.vercel.app"
+    cors_origins: str = "http://localhost:3000"
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        extra="ignore",
-        env_mapping={
-            "cors_origins": "CORS_ORIGINS"
-        }
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
     def cors_origin_list(self) -> list[str]:
-        # If someone put a comma-separated string or just a single URL
-        raw = self.cors_origins.strip()
-        if not raw:
-            return ["*"]
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+        return [origin.strip() for origin in self.cors_origins.split(",")]
 
 
 settings = Settings()
